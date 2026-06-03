@@ -39,6 +39,21 @@ const VOICES = [
   { lang: 'Telugu', label: 'Male - Friendly Voice', preview: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
 ];
 
+const ScrollSection = ({ children, className = "", id = "" }: { children: React.ReactNode; className?: string; id?: string }) => {
+  return (
+    <motion.section
+      id={id}
+      initial={{ opacity: 0, y: 45 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-100px" }}
+      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.section>
+  );
+};
+
 export default function Home() {
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
@@ -181,7 +196,7 @@ export default function Home() {
       </section>
 
       {/* 2. Platform Value / Stats */}
-      <section className="bg-[#F3F1EA] py-12 border-b border-black/[0.03]">
+      <ScrollSection className="bg-[#F3F1EA] py-12 border-b border-black/[0.03]">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {[
             { count: '100K+', desc: 'Indian Businesses' },
@@ -195,13 +210,13 @@ export default function Home() {
             </div>
           ))}
         </div>
-      </section>
+      </ScrollSection>
 
       {/* 3. Detailed Features Explanation (Expanded) */}
-      <section className="py-20 lg:py-28 px-6 flex flex-col gap-24 lg:gap-32 max-w-7xl mx-auto">
+      <div className="py-20 lg:py-28 px-6 flex flex-col gap-24 lg:gap-32 max-w-7xl mx-auto">
         
         {/* Core Video generator deep dive - AI SCRIPTWRITER */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+        <ScrollSection id="scriptwriter" className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           <div className="flex flex-col gap-6">
             <span className="text-xs font-bold uppercase tracking-widest text-brandGreen flex items-center gap-1">
               <Sparkles className="w-4.5 h-4.5" />
@@ -250,10 +265,10 @@ export default function Home() {
               </div>
             </div>
           </div>
-        </div>
+        </ScrollSection>
 
         {/* AI Voice & Accents Deep Dive */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+        <ScrollSection id="voice-accents" className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           <div className="bg-white border border-black/5 rounded-3xl p-6 shadow-xl shadow-brandGreen-dark/5 flex flex-col gap-5">
             <div className="flex items-center gap-2 border-b border-black/5 pb-3">
               <Volume2 className="w-5 h-5 text-brandGreen" />
@@ -329,10 +344,10 @@ export default function Home() {
               ))}
             </div>
           </div>
-        </div>
+        </ScrollSection>
 
         {/* Multi-language Captions Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+        <ScrollSection id="captions" className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           <div className="flex flex-col gap-6">
             <span className="text-xs font-bold uppercase tracking-widest text-brandGreen">Burned-in Captions</span>
             <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight text-brandGreen-dark">
@@ -389,11 +404,11 @@ export default function Home() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </ScrollSection>
+      </div>
 
       {/* 4. Comparison Section (Chitra AI vs Traditional Agencies) */}
-      <section className="bg-white py-20 lg:py-28 px-6 border-y border-black/[0.03]">
+      <ScrollSection className="bg-white py-20 lg:py-28 px-6 border-y border-black/[0.03]">
         <div className="max-w-7xl mx-auto flex flex-col gap-16">
           <div className="text-center max-w-2xl mx-auto flex flex-col gap-2">
             <span className="text-xs font-bold uppercase tracking-widest text-brandGreen">Smart Content Creation</span>
@@ -457,10 +472,10 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </section>
+      </ScrollSection>
 
       {/* 5. Use Case Scenarios */}
-      <section className="py-20 lg:py-28 px-6 max-w-7xl mx-auto flex flex-col gap-16">
+      <ScrollSection className="py-20 lg:py-28 px-6 max-w-7xl mx-auto flex flex-col gap-16">
         <div className="text-center max-w-xl mx-auto flex flex-col gap-2">
           <span className="text-xs font-bold uppercase tracking-widest text-brandGreen">Target Industries</span>
           <h2 className="font-heading text-3xl md:text-4xl font-bold text-brandGreen-dark">Designed for Indian Marketers</h2>
@@ -479,10 +494,10 @@ export default function Home() {
             </div>
           ))}
         </div>
-      </section>
+      </ScrollSection>
 
       {/* 6. How It Works (Workflow Block) */}
-      <section id="how-it-works" className="bg-[#F3F1EA] py-20 lg:py-28 px-6 border-y border-black/[0.03]">
+      <ScrollSection id="how-it-works" className="bg-[#F3F1EA] py-20 lg:py-28 px-6 border-y border-black/[0.03]">
         <div className="max-w-7xl mx-auto flex flex-col gap-16">
           <div className="text-center max-w-xl mx-auto flex flex-col gap-2">
             <span className="text-xs font-bold uppercase tracking-widest text-brandGreen">Process Overview</span>
@@ -504,10 +519,10 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </ScrollSection>
 
       {/* 7. Premium Pricing Grid & Checkout */}
-      <section className="py-20 lg:py-28 px-6 max-w-7xl mx-auto w-full flex flex-col gap-16">
+      <ScrollSection id="pricing" className="py-20 lg:py-28 px-6 max-w-7xl mx-auto w-full flex flex-col gap-16">
         <div className="text-center max-w-xl mx-auto flex flex-col gap-2">
           <span className="text-xs font-bold uppercase tracking-widest text-brandGreen">Transparent Pricing</span>
           <h2 className="font-heading text-3xl md:text-4xl font-bold text-brandGreen-dark">Simple Packages For All Needs</h2>
@@ -558,10 +573,10 @@ export default function Home() {
             </div>
           ))}
         </div>
-      </section>
+      </ScrollSection>
 
       {/* 8. FAQ Accordion (Expanded) */}
-      <section className="bg-[#F3F1EA] py-20 px-6 border-t border-black/[0.03]">
+      <ScrollSection className="bg-[#F3F1EA] py-20 px-6 border-t border-black/[0.03]">
         <div className="max-w-4xl mx-auto flex flex-col gap-12">
           <h2 className="font-heading text-3xl font-bold text-brandGreen-dark text-center">Frequently Asked Questions</h2>
           <div className="flex flex-col gap-4">
@@ -583,7 +598,7 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </ScrollSection>
 
       {/* 9. Footer */}
       <footer className="bg-brandGreen-dark text-[#FAFAF8]/80 py-16 px-6 border-t border-white/5">
@@ -599,13 +614,13 @@ export default function Home() {
           </div>
           <div className="flex flex-col gap-2">
             <span className="font-bold text-white uppercase tracking-wider text-xs">Features</span>
-            <a href="#" className="hover:text-white transition text-xs">AI Video Maker</a>
-            <a href="#" className="hover:text-white transition text-xs">Indian Regional Dialects</a>
-            <a href="#" className="hover:text-white transition text-xs">AI Scriptwriter Assistant</a>
+            <a href="#how-it-works" className="hover:text-white transition text-xs">AI Video Maker</a>
+            <a href="#voice-accents" className="hover:text-white transition text-xs">Indian Regional Dialects</a>
+            <a href="#scriptwriter" className="hover:text-white transition text-xs">AI Scriptwriter Assistant</a>
           </div>
           <div className="flex flex-col gap-2">
             <span className="font-bold text-white uppercase tracking-wider text-xs">Support</span>
-            <a href="#" className="hover:text-white transition text-xs">Pricing Details</a>
+            <a href="#pricing" className="hover:text-white transition text-xs">Pricing Details</a>
             <a href="#" className="hover:text-white transition text-xs">Contact Helpdesk</a>
             <a href="#" className="hover:text-white transition text-xs">Privacy Policy</a>
           </div>
