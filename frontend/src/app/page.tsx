@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Sparkles, 
@@ -33,10 +33,10 @@ const AVATARS = [
 ];
 
 const VOICES = [
-  { lang: 'Hindi', label: 'Male - Deep Tone', preview: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
-  { lang: 'Tamil', label: 'Female - Expressive', preview: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
-  { lang: 'English (IN)', label: 'Female - Professional', preview: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
-  { lang: 'Telugu', label: 'Male - Friendly Voice', preview: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
+  { lang: 'Hindi', label: 'Male - Deep Tone', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/ErXwobaYiN019PkySvjV/df361099-dbfb-476b-a25e-38411c4ad20f.mp3' },
+  { lang: 'Tamil', label: 'Female - Expressive', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df1e155e-2fe9-4e50-af44-7f897669d6ec.mp3' },
+  { lang: 'English (IN)', label: 'Female - Professional', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/01a9e33c-b34f-45b8-8f83-e187f50b8eb4.mp3' },
+  { lang: 'Telugu', label: 'Male - Friendly Voice', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/AZnzlk1XvdvUeBnXmlld/17b3cb3f-5d15-4fa8-a15d-85fa50b69103.mp3' },
 ];
 
 const ScrollSection = ({ children, className = "", id = "" }: { children: React.ReactNode; className?: string; id?: string }) => {
@@ -57,18 +57,36 @@ const ScrollSection = ({ children, className = "", id = "" }: { children: React.
 export default function Home() {
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const toggleVoicePlay = (lang: string, previewUrl: string) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
     if (playingVoice === lang) {
       setPlayingVoice(null);
     } else {
       setPlayingVoice(lang);
       const audio = new Audio(previewUrl);
+      audioRef.current = audio;
       audio.volume = 0.5;
       audio.play().catch(e => console.log('Audio playback blocked:', e));
-      audio.onended = () => setPlayingVoice(null);
+      audio.onended = () => {
+        setPlayingVoice(null);
+        audioRef.current = null;
+      };
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FAFAF8] text-[#1A1A1A] overflow-x-hidden">
@@ -339,7 +357,24 @@ export default function Home() {
                     <h4 className="font-bold text-sm text-brandGreen-dark">{vo.lang}</h4>
                     <span className="text-xs text-gray-400">{vo.label}</span>
                   </div>
-                  <Volume2 className={`w-4.5 h-4.5 text-brandGreen ${playingVoice === vo.lang ? 'animate-bounce' : ''}`} />
+                  {playingVoice === vo.lang ? (
+                    <div className="flex items-end gap-0.5 h-4 px-1">
+                      {[1, 2, 3, 4, 5].map((bar) => (
+                        <motion.div
+                          key={bar}
+                          className="w-[3px] bg-brandGreen rounded-full"
+                          animate={{ height: ["4px", "16px", "4px"] }}
+                          transition={{
+                            duration: 0.6 + bar * 0.1,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <Volume2 className="w-4.5 h-4.5 text-brandGreen" />
+                  )}
                 </button>
               ))}
             </div>
