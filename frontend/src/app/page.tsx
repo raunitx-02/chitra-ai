@@ -33,10 +33,10 @@ const AVATARS = [
 ];
 
 const VOICES = [
-  { lang: 'Hindi', label: 'Male - Deep Tone', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/ErXwobaYiN019PkySvjV/df361099-dbfb-476b-a25e-38411c4ad20f.mp3' },
-  { lang: 'Tamil', label: 'Female - Expressive', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df1e155e-2fe9-4e50-af44-7f897669d6ec.mp3' },
-  { lang: 'English (IN)', label: 'Female - Professional', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/01a9e33c-b34f-45b8-8f83-e187f50b8eb4.mp3' },
-  { lang: 'Telugu', label: 'Male - Friendly Voice', preview: 'https://storage.googleapis.com/eleven-public-prod/premade/voices/AZnzlk1XvdvUeBnXmlld/17b3cb3f-5d15-4fa8-a15d-85fa50b69103.mp3' },
+  { lang: 'Hindi', label: 'Male - Deep Tone', phrase: 'नमस्ते, यह चित्रा एआई का हिंदी वॉइस प्रिव्यू है।', langCode: 'hi-IN' },
+  { lang: 'Tamil', label: 'Female - Expressive', phrase: 'வணக்கம், இது சித்ரா ஏஐ-யின் தமிழ் குரல் முன்னோட்டம் ஆகும்.', langCode: 'ta-IN' },
+  { lang: 'English (IN)', label: 'Female - Professional', phrase: 'Hello, this is the Indian English voice preview of Chitra AI.', langCode: 'en-IN' },
+  { lang: 'Telugu', label: 'Male - Friendly Voice', phrase: 'నమస్కారం, ఇది చిత్రా ఏఐ యొక్క తెలుగు వాయిస్ ప్రివ్యూ.', langCode: 'te-IN' },
 ];
 
 const ScrollSection = ({ children, className = "", id = "" }: { children: React.ReactNode; className?: string; id?: string }) => {
@@ -57,33 +57,45 @@ const ScrollSection = ({ children, className = "", id = "" }: { children: React.
 export default function Home() {
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const toggleVoicePlay = (lang: string, previewUrl: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
+  const toggleVoicePlay = (lang: string, phrase: string, langCode: string) => {
+    if (typeof window === 'undefined') return;
+    const synth = window.speechSynthesis;
 
     if (playingVoice === lang) {
+      synth.cancel();
       setPlayingVoice(null);
     } else {
+      synth.cancel();
       setPlayingVoice(lang);
-      const audio = new Audio(previewUrl);
-      audioRef.current = audio;
-      audio.volume = 0.5;
-      audio.play().catch(e => console.log('Audio playback blocked:', e));
-      audio.onended = () => {
+
+      const utterance = new SpeechSynthesisUtterance(phrase);
+      utterance.lang = langCode;
+
+      // Pick a suitable regional voice if available
+      const voices = synth.getVoices();
+      const regionalVoice = voices.find(v => 
+        v.lang.toLowerCase().replace('_', '-').includes(langCode.toLowerCase())
+      );
+      if (regionalVoice) {
+        utterance.voice = regionalVoice;
+      }
+
+      utterance.onend = () => {
         setPlayingVoice(null);
-        audioRef.current = null;
       };
+      utterance.onerror = () => {
+        setPlayingVoice(null);
+      };
+
+      synth.speak(utterance);
     }
   };
 
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
+      if (typeof window !== 'undefined') {
+        window.speechSynthesis.cancel();
       }
     };
   }, []);
@@ -346,7 +358,7 @@ export default function Home() {
               {VOICES.map((vo) => (
                 <button
                   key={vo.lang}
-                  onClick={() => toggleVoicePlay(vo.lang, vo.preview)}
+                  onClick={() => toggleVoicePlay(vo.lang, vo.phrase, vo.langCode)}
                   className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition ${
                     playingVoice === vo.lang 
                       ? 'bg-brandGreen-light/30 border-brandGreen text-brandGreen-dark' 
