@@ -6,6 +6,13 @@ import { VideoStatus } from '@prisma/client';
 
 const HEYGEN_API_KEY = process.env.HEYGEN_API_KEY || '';
 
+// In-memory caching for HeyGen assets
+let cachedAvatars: any = null;
+let cachedAvatarsTime = 0;
+let cachedVoices: any = null;
+let cachedVoicesTime = 0;
+const CACHE_TTL = 30 * 60 * 1000; // Cache for 30 minutes
+
 // 1. Generate Video: POST /api/videos/generate
 export async function generateVideo(req: AuthenticatedRequest, res: Response) {
   try {
@@ -271,14 +278,21 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ message: 'HeyGen API Key is not configured' });
     }
 
-    const response = await axios.get('https://api.heygen.com/v3/avatars', {
+    // Check if cache is still valid
+    const now = Date.now();
+    if (cachedAvatars && (now - cachedAvatarsTime < CACHE_TTL)) {
+      return res.status(200).json(cachedAvatars);
+    }
+
+    console.log('[HeyGen API Cache] Cache miss, fetching avatars from API...');
+    const response = await axios.get('https://api.heygen.com/v2/avatars', {
       headers: {
         'x-api-key': HEYGEN_API_KEY,
-      },
-      params: {
-        limit: 100,
       }
     });
+
+    cachedAvatars = response.data;
+    cachedAvatarsTime = now;
 
     return res.status(200).json(response.data);
   } catch (error: any) {
@@ -299,14 +313,21 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ message: 'HeyGen API Key is not configured' });
     }
 
-    const response = await axios.get('https://api.heygen.com/v3/voices', {
+    // Check if cache is still valid
+    const now = Date.now();
+    if (cachedVoices && (now - cachedVoicesTime < CACHE_TTL)) {
+      return res.status(200).json(cachedVoices);
+    }
+
+    console.log('[HeyGen API Cache] Cache miss, fetching voices from API...');
+    const response = await axios.get('https://api.heygen.com/v2/voices', {
       headers: {
         'x-api-key': HEYGEN_API_KEY,
-      },
-      params: {
-        limit: 100,
       }
     });
+
+    cachedVoices = response.data;
+    cachedVoicesTime = now;
 
     return res.status(200).json(response.data);
   } catch (error: any) {

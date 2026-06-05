@@ -31,24 +31,43 @@ export default function Dashboard() {
   const { data: avatarsRes, error: avatarsErr } = useSWR(user ? '/videos/avatars' : null, fetcher);
   const { data: voicesRes, error: voicesErr } = useSWR(user ? '/videos/voices' : null, fetcher);
 
-  // Safely parse HeyGen responses
+  // Safely parse HeyGen responses (and filter out duplicates by ID)
   const avatars = (() => {
-    if (!avatarsRes) return [];
-    if (Array.isArray(avatarsRes)) return avatarsRes;
-    const d = avatarsRes.data;
-    if (Array.isArray(d)) return d;
-    if (d && Array.isArray(d.avatars)) return d.avatars;
-    if (d && Array.isArray(d.looks)) return d.looks;
-    return [];
+    let rawList: any[] = [];
+    if (avatarsRes) {
+      if (Array.isArray(avatarsRes)) rawList = avatarsRes;
+      else {
+        const d = avatarsRes.data;
+        if (Array.isArray(d)) rawList = d;
+        else if (d && Array.isArray(d.avatars)) rawList = d.avatars;
+        else if (d && Array.isArray(d.looks)) rawList = d.looks;
+      }
+    }
+    const seen = new Set();
+    return rawList.filter((av: any) => {
+      const id = av.id || av.avatar_id;
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   })();
 
   const voices = (() => {
-    if (!voicesRes) return [];
-    if (Array.isArray(voicesRes)) return voicesRes;
-    const d = voicesRes.data;
-    if (Array.isArray(d)) return d;
-    if (d && Array.isArray(d.voices)) return d.voices;
-    return [];
+    let rawList: any[] = [];
+    if (voicesRes) {
+      if (Array.isArray(voicesRes)) rawList = voicesRes;
+      else {
+        const d = voicesRes.data;
+        if (Array.isArray(d)) rawList = d;
+        else if (d && Array.isArray(d.voices)) rawList = d.voices;
+      }
+    }
+    const seen = new Set();
+    return rawList.filter((v: any) => {
+      if (!v.voice_id || seen.has(v.voice_id)) return false;
+      seen.add(v.voice_id);
+      return true;
+    });
   })();
 
   const [selectedAvatarId, setSelectedAvatarId] = useState<string>('');
@@ -64,6 +83,10 @@ export default function Dashboard() {
   const [voiceGender, setVoiceGender] = useState('all');
   const [voiceLanguage, setVoiceLanguage] = useState('all');
 
+  // Limits for pagination rendering to prevent DOM lag
+  const [avatarLimit, setAvatarLimit] = useState(24);
+  const [voiceLimit, setVoiceLimit] = useState(24);
+
   const [script, setScript] = useState('');
   const [rendering, setRendering] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
@@ -76,17 +99,38 @@ export default function Dashboard() {
   const [aiWriting, setAiWriting] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
 
+  // Sync selected avatar if not in filtered list
   useEffect(() => {
-    if (avatars.length > 0 && !selectedAvatarId) {
+    if (filteredAvatars.length > 0) {
+      const isSelectedInFiltered = filteredAvatars.some((av: any) => (av.id || av.avatar_id) === selectedAvatarId);
+      if (!isSelectedInFiltered) {
+        setSelectedAvatarId(filteredAvatars[0].id || filteredAvatars[0].avatar_id);
+      }
+    } else if (avatars.length > 0 && !selectedAvatarId) {
       setSelectedAvatarId(avatars[0].id || avatars[0].avatar_id);
     }
-  }, [avatars, selectedAvatarId]);
+  }, [filteredAvatars, selectedAvatarId, avatars]);
 
+  // Sync selected voice if not in filtered list
   useEffect(() => {
-    if (voices.length > 0 && !selectedVoiceId) {
+    if (filteredVoices.length > 0) {
+      const isSelectedInFiltered = filteredVoices.some((v: any) => v.voice_id === selectedVoiceId);
+      if (!isSelectedInFiltered) {
+        setSelectedVoiceId(filteredVoices[0].voice_id);
+      }
+    } else if (voices.length > 0 && !selectedVoiceId) {
       setSelectedVoiceId(voices[0].voice_id);
     }
-  }, [voices, selectedVoiceId]);
+  }, [filteredVoices, selectedVoiceId, voices]);
+
+  // Reset limits when filters change
+  useEffect(() => {
+    setAvatarLimit(24);
+  }, [avatarSearch, avatarGender]);
+
+  useEffect(() => {
+    setVoiceLimit(24);
+  }, [voiceSearch, voiceGender, voiceLanguage]);
 
   useEffect(() => {
     return () => {
@@ -126,7 +170,8 @@ export default function Dashboard() {
 
   const filteredAvatars = avatars.filter((av: any) => {
     const targetId = av.id || av.avatar_id || '';
-    const nameMatch = av.name?.toLowerCase().includes(avatarSearch.toLowerCase()) || targetId.toLowerCase().includes(avatarSearch.toLowerCase());
+    const targetName = av.name || av.avatar_name || '';
+    const nameMatch = targetName.toLowerCase().includes(avatarSearch.toLowerCase()) || targetId.toLowerCase().includes(avatarSearch.toLowerCase());
     const genderMatch = avatarGender === 'all' || av.gender?.toLowerCase() === avatarGender.toLowerCase();
     return nameMatch && genderMatch;
   });
@@ -137,6 +182,9 @@ export default function Dashboard() {
     const langMatch = voiceLanguage === 'all' || v.language === voiceLanguage;
     return nameMatch && genderMatch && langMatch;
   });
+
+  const visibleAvatars = filteredAvatars.slice(0, avatarLimit);
+  const visibleVoices = filteredVoices.slice(0, voiceLimit);
 
   const handleGenerateScript = async () => {
     if (!productName.trim() || !productDesc.trim()) return;
@@ -326,38 +374,50 @@ export default function Dashboard() {
                   <span>Loading presenter avatars...</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1">
-                  {filteredAvatars.length > 0 ? (
-                    filteredAvatars.map((av: any) => {
-                      const avId = av.id || av.avatar_id;
-                      return (
-                        <button
-                          type="button"
-                          key={avId}
-                          onClick={() => setSelectedAvatarId(avId)}
-                          className={`p-3 rounded-2xl border transition-all text-left flex flex-col items-center gap-2 relative overflow-hidden ${
-                            selectedAvatarId === avId
-                              ? 'border-brandGreen bg-brandGreen-light/20 shadow-md shadow-brandGreen/5'
-                              : 'border-black/5 bg-gray-50/50 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="h-16 w-16 rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center flex-shrink-0">
-                            {av.preview_image_url ? (
-                              <img src={av.preview_image_url} alt={av.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              <Video className="w-6 h-6 text-gray-300" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-[340px] overflow-y-auto pr-1">
+                  {visibleAvatars.length > 0 ? (
+                    <>
+                      {visibleAvatars.map((av: any) => {
+                        const avId = av.id || av.avatar_id;
+                        const avName = av.name || av.avatar_name || "Unnamed";
+                        return (
+                          <div
+                            role="button"
+                            key={avId}
+                            onClick={() => setSelectedAvatarId(avId)}
+                            className={`p-3 rounded-2xl border transition-all text-left flex flex-col items-center gap-2 relative overflow-hidden cursor-pointer ${
+                              selectedAvatarId === avId
+                                ? 'border-brandGreen bg-brandGreen-light/20 shadow-md shadow-brandGreen/5'
+                                : 'border-black/5 bg-gray-50/50 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="h-16 w-16 min-h-[64px] min-w-[64px] rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center flex-shrink-0 aspect-square">
+                              {av.preview_image_url ? (
+                                <img src={av.preview_image_url} alt={avName} className="h-full w-full object-cover rounded-full" referrerPolicy="no-referrer" />
+                              ) : (
+                                <Video className="w-6 h-6 text-gray-300" />
+                              )}
+                            </div>
+                            <div className="text-center w-full min-w-0">
+                              <h4 className="font-bold text-xs text-brandGreen-dark truncate">{avName}</h4>
+                              <span className="text-[9px] text-gray-400 block mt-0.5 capitalize">{av.gender || "neutral"}</span>
+                            </div>
+                            {selectedAvatarId === avId && (
+                              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brandGreen animate-pulse" />
                             )}
                           </div>
-                          <div className="text-center w-full min-w-0">
-                            <h4 className="font-bold text-xs text-brandGreen-dark truncate">{av.name || "Unnamed"}</h4>
-                            <span className="text-[9px] text-gray-400 block mt-0.5 capitalize">{av.gender || "neutral"}</span>
-                          </div>
-                          {selectedAvatarId === avId && (
-                            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brandGreen animate-pulse" />
-                          )}
-                        </button>
-                      );
-                    })
+                        );
+                      })}
+                      {filteredAvatars.length > avatarLimit && (
+                        <div
+                          role="button"
+                          onClick={() => setAvatarLimit(prev => prev + 24)}
+                          className="col-span-full py-2.5 bg-gray-50 border border-dashed border-black/10 hover:bg-gray-100 hover:border-brandGreen/30 rounded-xl text-xs font-bold text-brandGreen-dark text-center transition cursor-pointer mt-1"
+                        >
+                          Load More Presenters (+{filteredAvatars.length - avatarLimit} more)
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="col-span-full py-8 text-center text-xs text-gray-400">No presenter models match your search.</div>
                   )}
@@ -409,41 +469,55 @@ export default function Dashboard() {
                   <span>Loading voice synthesizers...</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
-                  {filteredVoices.length > 0 ? (
-                    filteredVoices.map((v: any) => (
-                      <button
-                        type="button"
-                        key={v.voice_id}
-                        onClick={() => setSelectedVoiceId(v.voice_id)}
-                        className={`p-3 rounded-xl border text-left flex items-center justify-between text-xs transition relative overflow-hidden ${
-                          selectedVoiceId === v.voice_id
-                            ? 'border-brandGreen bg-brandGreen-light/20 text-brandGreen-dark font-bold'
-                            : 'border-black/5 text-gray-600 bg-gray-50/50 hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="min-w-0 flex-grow pr-2">
-                          <div className="font-bold text-brandGreen-dark flex items-center gap-1.5">
-                            <span className="truncate">{v.name}</span>
-                            <span className="text-[8px] font-semibold px-1.5 py-0.2 bg-black/5 text-gray-500 rounded-full capitalize flex-shrink-0">{v.gender}</span>
-                          </div>
-                          <span className="text-[10px] text-gray-400 block mt-0.5 truncate">{v.language}</span>
-                        </div>
-                        {v.preview_audio_url && (
-                          <button
-                            type="button"
-                            onClick={(e) => playVoicePreview(v.voice_id, v.preview_audio_url, e)}
-                            className="p-1.5 rounded-full hover:bg-black/5 text-brandGreen transition flex-shrink-0"
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[340px] overflow-y-auto pr-1">
+                  {visibleVoices.length > 0 ? (
+                    <>
+                      {visibleVoices.map((v: any) => {
+                        const audioUrl = v.preview_audio || v.preview_audio_url;
+                        return (
+                          <div
+                            role="button"
+                            key={v.voice_id}
+                            onClick={() => setSelectedVoiceId(v.voice_id)}
+                            className={`p-3 rounded-xl border text-left flex items-center justify-between text-xs transition relative overflow-hidden cursor-pointer ${
+                              selectedVoiceId === v.voice_id
+                                ? 'border-brandGreen bg-brandGreen-light/20 text-brandGreen-dark font-bold shadow-sm'
+                                : 'border-black/5 text-gray-600 bg-gray-50/50 hover:bg-gray-50'
+                            }`}
                           >
-                            {voicePreviewPlaying === v.voice_id ? (
-                              <Pause className="w-3.5 h-3.5 fill-brandGreen animate-pulse" />
-                            ) : (
-                              <Volume2 className="w-3.5 h-3.5" />
+                            <div className="min-w-0 flex-grow pr-2">
+                              <div className="font-bold text-brandGreen-dark flex items-center gap-1.5">
+                                <span className="truncate">{v.name}</span>
+                                <span className="text-[8px] font-semibold px-1.5 py-0.2 bg-black/5 text-gray-500 rounded-full capitalize flex-shrink-0">{v.gender}</span>
+                              </div>
+                              <span className="text-[10px] text-gray-400 block mt-0.5 truncate">{v.language}</span>
+                            </div>
+                            {audioUrl && (
+                              <button
+                                type="button"
+                                onClick={(e) => playVoicePreview(v.voice_id, audioUrl, e)}
+                                className="p-1.5 rounded-full hover:bg-black/5 text-brandGreen transition flex-shrink-0"
+                              >
+                                {voicePreviewPlaying === v.voice_id ? (
+                                  <Pause className="w-3.5 h-3.5 fill-brandGreen animate-pulse" />
+                                ) : (
+                                  <Volume2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
                             )}
-                          </button>
-                        )}
-                      </button>
-                    ))
+                          </div>
+                        );
+                      })}
+                      {filteredVoices.length > voiceLimit && (
+                        <div
+                          role="button"
+                          onClick={() => setVoiceLimit(prev => prev + 24)}
+                          className="col-span-full py-2 bg-gray-50 border border-dashed border-black/10 hover:bg-gray-100 hover:border-brandGreen/30 rounded-xl text-xs font-bold text-brandGreen-dark text-center transition cursor-pointer mt-1"
+                        >
+                          Load More Voices (+{filteredVoices.length - voiceLimit} more)
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="col-span-full py-8 text-center text-xs text-gray-400">No voice presets match your criteria.</div>
                   )}
