@@ -71,7 +71,10 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
                 },
               },
             ],
-            dimension: 'portrait', // portrait 9:16 for Reels/Shorts
+            dimension: {
+              width: 1080,
+              height: 1920,
+            },
           },
           {
             headers: {

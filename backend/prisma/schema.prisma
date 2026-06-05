@@ -1,38 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model User {
-  id             String        @id // Maps to Firebase UID
+  id             String        @id
   email          String        @unique
   name           String?
   avatarUrl      String?       @map("avatar_url")
-  creditsBalance Int           @default(100) @map("credits_balance") // 100 free starting credits
+  creditsBalance Int           @default(100) @map("credits_balance")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
-
-  videos         Video[]
   transactions   Transaction[]
+  videos         Video[]
 
   @@map("users")
-}
-
-enum VideoStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
 }
 
 model Video {
   id           String      @id @default(uuid())
   userId       String      @map("user_id")
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   script       String
   avatarId     String      @map("avatar_id")
   voiceId      String      @map("voice_id")
@@ -42,6 +33,7 @@ model Video {
   status       VideoStatus @default(PENDING)
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("videos")
 }
@@ -49,13 +41,20 @@ model Video {
 model Transaction {
   id                String   @id @default(uuid())
   userId            String   @map("user_id")
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   amount            Float
   creditsGranted    Int      @map("credits_granted")
   razorpayOrderId   String   @unique @map("razorpay_order_id")
   razorpayPaymentId String?  @unique @map("razorpay_payment_id")
-  status            String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  status            String   @default("PENDING")
   createdAt         DateTime @default(now()) @map("created_at")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("transactions")
+}
+
+enum VideoStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
