@@ -386,21 +386,21 @@ export default function Dashboard() {
                             role="button"
                             key={avId}
                             onClick={() => setSelectedAvatarId(avId)}
-                            className={`p-3 rounded-2xl border transition-all text-left flex flex-col items-center gap-2 relative overflow-hidden cursor-pointer ${
+                            className={`p-3 rounded-2xl border transition-all text-center flex flex-col items-center justify-center gap-2.5 relative overflow-hidden cursor-pointer h-[135px] min-h-[135px] w-full ${
                               selectedAvatarId === avId
                                 ? 'border-brandGreen bg-brandGreen-light/20 shadow-md shadow-brandGreen/5'
                                 : 'border-black/5 bg-gray-50/50 hover:bg-gray-50'
                             }`}
                           >
-                            <div className="h-16 w-16 min-h-[64px] min-w-[64px] rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center flex-shrink-0 aspect-square">
+                            <div className="h-14 w-14 rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center flex-shrink-0 aspect-square">
                               {av.preview_image_url ? (
                                 <img src={av.preview_image_url} alt={avName} className="h-full w-full object-cover rounded-full" referrerPolicy="no-referrer" />
                               ) : (
-                                <Video className="w-6 h-6 text-gray-300" />
+                                <Video className="w-5 h-5 text-gray-300" />
                               )}
                             </div>
                             <div className="text-center w-full min-w-0">
-                              <h4 className="font-bold text-xs text-brandGreen-dark truncate">{avName}</h4>
+                              <h4 className="font-bold text-xs text-brandGreen-dark truncate px-1">{avName}</h4>
                               <span className="text-[9px] text-gray-400 block mt-0.5 capitalize">{av.gender || "neutral"}</span>
                             </div>
                             {selectedAvatarId === avId && (
@@ -480,29 +480,29 @@ export default function Dashboard() {
                             role="button"
                             key={v.voice_id}
                             onClick={() => setSelectedVoiceId(v.voice_id)}
-                            className={`p-3 rounded-xl border text-left flex items-center justify-between text-xs transition relative overflow-hidden cursor-pointer ${
+                            className={`p-4 rounded-2xl border text-left flex items-center justify-between text-xs transition relative overflow-hidden cursor-pointer min-h-[72px] ${
                               selectedVoiceId === v.voice_id
-                                ? 'border-brandGreen bg-brandGreen-light/20 text-brandGreen-dark font-bold shadow-sm'
+                                ? 'border-brandGreen bg-brandGreen-light/20 text-brandGreen-dark font-bold shadow-md shadow-brandGreen/5'
                                 : 'border-black/5 text-gray-600 bg-gray-50/50 hover:bg-gray-50'
                             }`}
                           >
-                            <div className="min-w-0 flex-grow pr-2">
-                              <div className="font-bold text-brandGreen-dark flex items-center gap-1.5">
+                            <div className="min-w-0 flex-grow pr-3">
+                              <div className="font-bold text-brandGreen-dark flex items-center gap-1.5 flex-wrap">
                                 <span className="truncate">{v.name}</span>
-                                <span className="text-[8px] font-semibold px-1.5 py-0.2 bg-black/5 text-gray-500 rounded-full capitalize flex-shrink-0">{v.gender}</span>
+                                <span className="text-[8px] font-semibold px-2 py-0.5 bg-black/5 text-gray-500 rounded-full capitalize flex-shrink-0">{v.gender}</span>
                               </div>
-                              <span className="text-[10px] text-gray-400 block mt-0.5 truncate">{v.language}</span>
+                              <span className="text-[10px] text-gray-400 block mt-1.5 truncate">{v.language}</span>
                             </div>
                             {audioUrl && (
                               <button
                                 type="button"
                                 onClick={(e) => playVoicePreview(v.voice_id, audioUrl, e)}
-                                className="p-1.5 rounded-full hover:bg-black/5 text-brandGreen transition flex-shrink-0"
+                                className="p-2 rounded-full hover:bg-black/5 text-brandGreen transition flex-shrink-0"
                               >
                                 {voicePreviewPlaying === v.voice_id ? (
-                                  <Pause className="w-3.5 h-3.5 fill-brandGreen animate-pulse" />
+                                  <Pause className="w-4 h-4 fill-brandGreen animate-pulse" />
                                 ) : (
-                                  <Volume2 className="w-3.5 h-3.5" />
+                                  <Volume2 className="w-4 h-4" />
                                 )}
                               </button>
                             )}
