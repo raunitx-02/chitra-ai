@@ -99,6 +99,26 @@ export default function Dashboard() {
   const [aiWriting, setAiWriting] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
 
+  const uniqueLanguages = Array.from(new Set(voices.map((v: any) => v.language))).filter(Boolean).sort();
+
+  const filteredAvatars = avatars.filter((av: any) => {
+    const targetId = av.id || av.avatar_id || '';
+    const targetName = av.name || av.avatar_name || '';
+    const nameMatch = targetName.toLowerCase().includes(avatarSearch.toLowerCase()) || targetId.toLowerCase().includes(avatarSearch.toLowerCase());
+    const genderMatch = avatarGender === 'all' || av.gender?.toLowerCase() === avatarGender.toLowerCase();
+    return nameMatch && genderMatch;
+  });
+
+  const filteredVoices = voices.filter((v: any) => {
+    const nameMatch = v.name?.toLowerCase().includes(voiceSearch.toLowerCase()) || v.voice_id?.toLowerCase().includes(voiceSearch.toLowerCase());
+    const genderMatch = voiceGender === 'all' || v.gender?.toLowerCase() === voiceGender.toLowerCase();
+    const langMatch = voiceLanguage === 'all' || v.language === voiceLanguage;
+    return nameMatch && genderMatch && langMatch;
+  });
+
+  const visibleAvatars = filteredAvatars.slice(0, avatarLimit);
+  const visibleVoices = filteredVoices.slice(0, voiceLimit);
+
   // Sync selected avatar if not in filtered list
   useEffect(() => {
     if (filteredAvatars.length > 0) {
@@ -166,25 +186,6 @@ export default function Dashboard() {
     }
   };
 
-  const uniqueLanguages = Array.from(new Set(voices.map((v: any) => v.language))).filter(Boolean).sort();
-
-  const filteredAvatars = avatars.filter((av: any) => {
-    const targetId = av.id || av.avatar_id || '';
-    const targetName = av.name || av.avatar_name || '';
-    const nameMatch = targetName.toLowerCase().includes(avatarSearch.toLowerCase()) || targetId.toLowerCase().includes(avatarSearch.toLowerCase());
-    const genderMatch = avatarGender === 'all' || av.gender?.toLowerCase() === avatarGender.toLowerCase();
-    return nameMatch && genderMatch;
-  });
-
-  const filteredVoices = voices.filter((v: any) => {
-    const nameMatch = v.name?.toLowerCase().includes(voiceSearch.toLowerCase()) || v.voice_id?.toLowerCase().includes(voiceSearch.toLowerCase());
-    const genderMatch = voiceGender === 'all' || v.gender?.toLowerCase() === voiceGender.toLowerCase();
-    const langMatch = voiceLanguage === 'all' || v.language === voiceLanguage;
-    return nameMatch && genderMatch && langMatch;
-  });
-
-  const visibleAvatars = filteredAvatars.slice(0, avatarLimit);
-  const visibleVoices = filteredVoices.slice(0, voiceLimit);
 
   const handleGenerateScript = async () => {
     if (!productName.trim() || !productDesc.trim()) return;
