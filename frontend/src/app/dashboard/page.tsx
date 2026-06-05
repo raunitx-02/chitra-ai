@@ -96,6 +96,7 @@ export default function Dashboard() {
   })();
 
   const [selectedAvatarId, setSelectedAvatarId] = useState<string>('');
+  const [hoveredAvatarId, setHoveredAvatarId] = useState<string | null>(null);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
   const [voicePreviewPlaying, setVoicePreviewPlaying] = useState<string | null>(null);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -411,25 +412,38 @@ export default function Dashboard() {
                             role="button"
                             key={avId}
                             onClick={() => setSelectedAvatarId(avId)}
-                            className={`p-3 rounded-2xl border transition-all text-center flex flex-col items-center justify-center gap-2.5 relative overflow-hidden cursor-pointer h-[135px] min-h-[135px] w-full ${
+                            onMouseEnter={() => setHoveredAvatarId(avId)}
+                            onMouseLeave={() => setHoveredAvatarId(null)}
+                            className={`rounded-2xl border transition-all text-left flex flex-col relative overflow-hidden cursor-pointer h-[190px] min-h-[190px] w-full group ${
                               selectedAvatarId === avId
-                                ? 'border-brandGreen bg-brandGreen-light/20 shadow-md shadow-brandGreen/5'
-                                : 'border-black/5 bg-gray-50/50 hover:bg-gray-50'
+                                ? 'border-brandGreen bg-brandGreen-light/10 shadow-md shadow-brandGreen/5'
+                                : 'border-black/5 bg-gray-50/50 hover:bg-gray-50 hover:scale-[1.01]'
                             }`}
                           >
-                            <div className="h-14 w-14 rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center flex-shrink-0 aspect-square">
-                              {av.preview_image_url ? (
-                                <img src={av.preview_image_url} alt={avName} className="h-full w-full object-cover rounded-full" referrerPolicy="no-referrer" />
+                            {/* Full-bleed thumbnail image/video preview */}
+                            <div className="w-full h-[130px] overflow-hidden bg-gray-100 flex items-center justify-center relative border-b border-black/5">
+                              {hoveredAvatarId === avId && av.preview_video_url ? (
+                                <video
+                                  src={av.preview_video_url}
+                                  autoPlay
+                                  muted
+                                  loop
+                                  playsInline
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : av.preview_image_url ? (
+                                <img src={av.preview_image_url} alt={avName} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer" />
                               ) : (
-                                <Video className="w-5 h-5 text-gray-300" />
+                                <Video className="w-6 h-6 text-gray-300" />
                               )}
                             </div>
-                            <div className="text-center w-full min-w-0">
-                              <h4 className="font-bold text-xs text-brandGreen-dark truncate px-1">{avName}</h4>
+                            {/* Presenter Name and info */}
+                            <div className="p-2.5 flex flex-col justify-center flex-grow min-w-0 bg-white">
+                              <h4 className="font-bold text-xs text-brandGreen-dark truncate">{avName}</h4>
                               <span className="text-[9px] text-gray-400 block mt-0.5 capitalize">{av.gender || "neutral"}</span>
                             </div>
                             {selectedAvatarId === avId && (
-                              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brandGreen animate-pulse" />
+                              <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full bg-brandGreen border border-white shadow-sm" />
                             )}
                           </div>
                         );
