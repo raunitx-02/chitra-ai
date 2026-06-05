@@ -122,16 +122,16 @@ export default function Dashboard() {
     }
   };
 
-  const uniqueLanguages = Array.from(new Set(voices.map(v => v.language))).filter(Boolean).sort();
+  const uniqueLanguages = Array.from(new Set(voices.map((v: any) => v.language))).filter(Boolean).sort();
 
-  const filteredAvatars = avatars.filter(av => {
+  const filteredAvatars = avatars.filter((av: any) => {
     const targetId = av.id || av.avatar_id || '';
     const nameMatch = av.name?.toLowerCase().includes(avatarSearch.toLowerCase()) || targetId.toLowerCase().includes(avatarSearch.toLowerCase());
     const genderMatch = avatarGender === 'all' || av.gender?.toLowerCase() === avatarGender.toLowerCase();
     return nameMatch && genderMatch;
   });
 
-  const filteredVoices = voices.filter(v => {
+  const filteredVoices = voices.filter((v: any) => {
     const nameMatch = v.name?.toLowerCase().includes(voiceSearch.toLowerCase()) || v.voice_id?.toLowerCase().includes(voiceSearch.toLowerCase());
     const genderMatch = voiceGender === 'all' || v.gender?.toLowerCase() === voiceGender.toLowerCase();
     const langMatch = voiceLanguage === 'all' || v.language === voiceLanguage;
@@ -143,7 +143,7 @@ export default function Dashboard() {
     setAiWriting(true);
     setError('');
     try {
-      const activeVoice = voices.find(v => v.voice_id === selectedVoiceId);
+      const activeVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
       const res = await api.post('/videos/generate-script', {
         productName,
         description: productDesc,
@@ -184,7 +184,7 @@ export default function Dashboard() {
     setError('');
 
     try {
-      const activeVoice = voices.find(v => v.voice_id === selectedVoiceId);
+      const activeVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
       await api.post('/videos/generate', {
         script,
         avatarId: selectedAvatarId,
@@ -328,7 +328,7 @@ export default function Dashboard() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1">
                   {filteredAvatars.length > 0 ? (
-                    filteredAvatars.map((av) => {
+                    filteredAvatars.map((av: any) => {
                       const avId = av.id || av.avatar_id;
                       return (
                         <button
@@ -386,7 +386,7 @@ export default function Dashboard() {
                     className="px-2 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen max-w-[110px]"
                   >
                     <option value="all">All Languages</option>
-                    {uniqueLanguages.map(lang => (
+                    {uniqueLanguages.map((lang: any) => (
                       <option key={lang} value={lang}>{lang}</option>
                     ))}
                   </select>
@@ -411,7 +411,7 @@ export default function Dashboard() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
                   {filteredVoices.length > 0 ? (
-                    filteredVoices.map((v) => (
+                    filteredVoices.map((v: any) => (
                       <button
                         type="button"
                         key={v.voice_id}
