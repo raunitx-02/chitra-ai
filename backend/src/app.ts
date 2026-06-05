@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.routes';
 import videoRoutes from './routes/video.routes';
 import paymentRoutes from './routes/payment.routes';
 import { errorHandler } from './middlewares/error.middleware';
+import { resumeActivePolling } from './controllers/video.controller';
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`[Chitra AI Video Server] Running on localhost port ${PORT}`);
+  resumeActivePolling();
 });
 
 export default app;

@@ -86,12 +86,12 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
 
         const heygenVideoId = response.data?.data?.video_id;
 
-        // Update video record to PROCESSING with a mock url/id
+        // Update video record to PROCESSING, storing job ID in videoUrl temporarily
         await prisma.video.update({
           where: { id: video.id },
           data: {
             status: VideoStatus.PROCESSING,
-            // Store job ID or metadata
+            videoUrl: heygenVideoId,
           },
         });
 
@@ -161,18 +161,24 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
   }
 }
 
-// Helper to poll HeyGen API in background
+// Helper to poll HeyGen API in background (lasts up to 30 minutes)
 async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
-  const maxAttempts = 30;
+  const maxAttempts = 90; // 90 * 20 seconds = 30 minutes
   let attempts = 0;
+
+  console.log(`[HeyGen Polling] Starting status polling for Video: ${dbVideoId}, Job: ${heygenVideoId}`);
 
   const interval = setInterval(async () => {
     attempts++;
     if (attempts > maxAttempts) {
+      console.log(`[HeyGen Polling] Polling timed out (30 mins limit) for Video: ${dbVideoId}`);
       clearInterval(interval);
       await prisma.video.update({
         where: { id: dbVideoId },
-        data: { status: VideoStatus.FAILED },
+        data: {
+          status: VideoStatus.FAILED,
+          videoUrl: null, // Clear job ID
+        },
       });
       return;
     }
@@ -188,10 +194,14 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
       );
 
       const status = response.data?.data?.status;
+      console.log(`[HeyGen Polling] Video: ${dbVideoId}, Attempt: ${attempts}/${maxAttempts}, Status: ${status}`);
+
       if (status === 'completed') {
         clearInterval(interval);
         const videoUrl = response.data?.data?.video_url;
         const thumbnailUrl = response.data?.data?.thumbnail_url;
+
+        console.log(`[HeyGen Polling] Video completed! URL: ${videoUrl}`);
 
         await prisma.video.update({
           where: { id: dbVideoId },
@@ -202,16 +212,20 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
           },
         });
       } else if (status === 'failed') {
+        console.log(`[HeyGen Polling] Video failed on HeyGen side.`);
         clearInterval(interval);
         await prisma.video.update({
           where: { id: dbVideoId },
-          data: { status: VideoStatus.FAILED },
+          data: {
+            status: VideoStatus.FAILED,
+            videoUrl: null, // Clear job ID
+          },
         });
       }
-    } catch (err) {
-      console.error('Error polling HeyGen status:', err);
+    } catch (err: any) {
+      console.error('Error polling HeyGen status:', err.response?.data || err.message);
     }
-  }, 10000); // poll every 10 seconds
+  }, 20000); // poll every 20 seconds
 }
 
 // 2. Fetch User Videos: GET /api/videos
@@ -336,5 +350,23 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
   } catch (error: any) {
     console.error('Error fetching HeyGen voices:', error.response?.data || error.message);
     return res.status(500).json({ message: error.response?.data?.message || 'Error fetching voices from HeyGen' });
+  }
+}
+
+// 6. Resume active polling for unprocessed jobs (Server restart recovery)
+export async function resumeActivePolling() {
+  try {
+    const processingVideos = await prisma.video.findMany({
+      where: { status: VideoStatus.PROCESSING },
+    });
+    console.log(`[HeyGen Resume] Found ${processingVideos.length} videos in PROCESSING state to resume polling.`);
+    for (const video of processingVideos) {
+      if (video.videoUrl && !video.videoUrl.startsWith('http')) {
+        console.log(`[HeyGen Resume] Resuming status polling loop for Video ID: ${video.id}, HeyGen ID: ${video.videoUrl}`);
+        pollHeyGenStatus(video.id, video.videoUrl);
+      }
+    }
+  } catch (err) {
+    console.error('[HeyGen Resume] Error resuming active polling on startup:', err);
   }
 }
