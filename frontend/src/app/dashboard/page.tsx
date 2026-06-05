@@ -31,7 +31,7 @@ export default function Dashboard() {
   const { data: avatarsRes, error: avatarsErr } = useSWR(user ? '/videos/avatars' : null, fetcher);
   const { data: voicesRes, error: voicesErr } = useSWR(user ? '/videos/voices' : null, fetcher);
 
-  // Safely parse HeyGen responses (and filter out duplicates by ID)
+  // Safely parse HeyGen responses (and group variations by character name)
   const avatars = (() => {
     let rawList: any[] = [];
     if (avatarsRes) {
@@ -43,11 +43,36 @@ export default function Dashboard() {
         else if (d && Array.isArray(d.looks)) rawList = d.looks;
       }
     }
-    const seen = new Set();
+
+    const seenCharacters = new Set();
+
+    // Helper to get character base name key (e.g. "Armando" from "Armando Casual Front")
+    const getCharacterKey = (nameStr: string) => {
+      if (!nameStr) return '';
+      const parts = nameStr.trim().split(/\s+/);
+      if (parts.length === 0) return '';
+      const first = parts[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+      const salutations = ['dr', 'mr', 'mrs', 'ms', 'prof', 'doctor'];
+      if (salutations.includes(first) && parts.length > 1) {
+        return (parts[0] + '_' + parts[1]).toLowerCase();
+      }
+      return first;
+    };
+
     return rawList.filter((av: any) => {
-      const id = av.id || av.avatar_id;
-      if (!id || seen.has(id)) return false;
-      seen.add(id);
+      const avName = av.name || av.avatar_name || '';
+      if (!avName) return false;
+
+      // Skip side/sitting/back views to keep it professional and front-facing by default
+      const lowerName = avName.toLowerCase();
+      if (lowerName.includes('side') || lowerName.includes('sitting') || lowerName.includes('back')) {
+        return false;
+      }
+
+      const charKey = getCharacterKey(avName);
+      if (!charKey || seenCharacters.has(charKey)) return false;
+
+      seenCharacters.add(charKey);
       return true;
     });
   })();
