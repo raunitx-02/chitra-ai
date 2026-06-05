@@ -275,6 +275,9 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
       headers: {
         'x-api-key': HEYGEN_API_KEY,
       },
+      params: {
+        limit: 100,
+      }
     });
 
     return res.status(200).json(response.data);

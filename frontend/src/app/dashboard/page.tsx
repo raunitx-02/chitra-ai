@@ -341,9 +341,9 @@ export default function Dashboard() {
                               : 'border-black/5 bg-gray-50/50 hover:bg-gray-50'
                           }`}
                         >
-                          <div className="h-16 w-16 rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center">
+                          <div className="h-16 w-16 rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center flex-shrink-0">
                             {av.preview_image_url ? (
-                              <img src={av.preview_image_url} alt={av.name} className="h-full w-full object-cover" />
+                              <img src={av.preview_image_url} alt={av.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <Video className="w-6 h-6 text-gray-300" />
                             )}
