@@ -68,7 +68,7 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
           },
           {
             headers: {
-              'X-Api-Key': HEYGEN_API_KEY,
+              'x-api-key': HEYGEN_API_KEY,
               'Content-Type': 'application/json',
             },
           }
@@ -169,10 +169,10 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
 
     try {
       const response = await axios.get(
-        `https://api.heygen.com/v2/video/status?video_id=${heygenVideoId}`,
+        `https://api.heygen.com/v3/videos/${heygenVideoId}`,
         {
           headers: {
-            'X-Api-Key': HEYGEN_API_KEY,
+            'x-api-key': HEYGEN_API_KEY,
           },
         }
       );
@@ -245,7 +245,7 @@ export async function generateScript(req: AuthenticatedRequest, res: Response) {
     if (lang.includes('Hindi')) {
       script = `हे दोस्तों! क्या आप जानते हैं कि ${productName} आपके जीवन को कितना आसान बना सकता है? अगर आप ${description} से परेशान हैं, तो आज ही इसे आज़माएं। यह विशेष रूप से हमारे ${audience} के लिए बनाया गया है। अभी नीचे दिए गए बटन पर क्लिक करें और 50% की छूट का लाभ उठाएं!`;
     } else if (lang.includes('Tamil')) {
-      script = `வணக்கம் நண்பர்களே! ${productName} உங்களை எப்படி மாற்றப்போகிறது என்று தெரியுமா? ${description} காரணமாக நீங்கள் கவலைப்படுகிறீர்களா? கவலை வேண்டாம்! இதோ உங்களுக்கான தீர்வு. எங்கள் ${audience}-க்காகவே இது பிரத்யேகமாக தயாரிக்கப்பட்டுள்ளது. உடனே கீழே உள்ள லிங்கை கிளிக் செய்து ஆர்டர் செய்யுங்கள்!`;
+      script = `வணக்கம் நண்பர்களே! ${productName} உங்களை எப்படி மாற்றப்போகிறது என்று தெரியுமா? ${description} காரணமாக நீங்கள் கவலைப்படுகிறீர்களா? கவலை வேண்டாம்! இதோ உங்களுக்கான தீர்வு. எங்கள் ${audience}-க்காகவே இது பிரத்யேகமாக தயாரிப்பு செய்யப்பட்டுள்ளது. உடனே கீழே உள்ள லிங்கை கிளிக் செய்து ஆர்டர் செய்யுங்கள்!`;
     } else if (lang.includes('Telugu')) {
       script = `నమస్కారం! ${productName} మీ జీవితాన్ని ఎంత సులభతరం చేస్తుందో మీకు తెలుసా? ${description} తో మీరు ఇబ్బంది పడుతున్నారా? అయితే ఇది మీ కోసమే! మా ${audience} కోసం ప్రత్యేకంగా డిజైన్ చేయబడింది. ఇప్పుడే కింద ఉన్న లింక్‌ని క్లిక్ చేయండి మరియు ప్రత్యేక ఆఫర్‌ని పొందండి!`;
     } else {
@@ -256,5 +256,58 @@ export async function generateScript(req: AuthenticatedRequest, res: Response) {
   } catch (error: any) {
     console.error('Error generating script:', error);
     return res.status(500).json({ message: error.message || 'Error generating script.' });
+  }
+}
+
+// 4. Fetch HeyGen Avatars: GET /api/videos/avatars
+export async function getAvatars(req: AuthenticatedRequest, res: Response) {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!HEYGEN_API_KEY) {
+      return res.status(400).json({ message: 'HeyGen API Key is not configured' });
+    }
+
+    const response = await axios.get('https://api.heygen.com/v3/avatars', {
+      headers: {
+        'x-api-key': HEYGEN_API_KEY,
+      },
+    });
+
+    return res.status(200).json(response.data);
+  } catch (error: any) {
+    console.error('Error fetching HeyGen avatars:', error.response?.data || error.message);
+    return res.status(500).json({ message: error.response?.data?.message || 'Error fetching avatars from HeyGen' });
+  }
+}
+
+// 5. Fetch HeyGen Voices: GET /api/videos/voices
+export async function getVoices(req: AuthenticatedRequest, res: Response) {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!HEYGEN_API_KEY) {
+      return res.status(400).json({ message: 'HeyGen API Key is not configured' });
+    }
+
+    const response = await axios.get('https://api.heygen.com/v3/voices', {
+      headers: {
+        'x-api-key': HEYGEN_API_KEY,
+      },
+      params: {
+        limit: 100,
+      }
+    });
+
+    return res.status(200).json(response.data);
+  } catch (error: any) {
+    console.error('Error fetching HeyGen voices:', error.response?.data || error.message);
+    return res.status(500).json({ message: error.response?.data?.message || 'Error fetching voices from HeyGen' });
   }
 }

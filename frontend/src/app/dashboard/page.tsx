@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
@@ -15,31 +15,55 @@ import {
   CreditCard, 
   AlertTriangle,
   History,
-  CheckCircle
+  CheckCircle,
+  Pause,
+  Search,
+  Filter
 } from 'lucide-react';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
-
-const AVATARS = [
-  { id: 'aisha_fashion_01', name: 'Aisha', role: 'Lifestyle & Beauty', img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80' },
-  { id: 'kabir_business_02', name: 'Kabir', role: 'Tech & Commerce', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80' },
-  { id: 'priya_health_03', name: 'Priya', role: 'Medical & Wellness', img: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=80' },
-  { id: 'rohan_fitness_04', name: 'Rohan', role: 'Sports & Coaching', img: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80' },
-];
-
-const LANGUAGES = [
-  { id: 'hi_male_01', label: 'Hindi (Male)', voiceId: 'hindi-male-voice' },
-  { id: 'ta_female_02', label: 'Tamil (Female)', voiceId: 'tamil-female-voice' },
-  { id: 'en_female_03', label: 'English (Female)', voiceId: 'english-female-voice' },
-  { id: 'te_male_04', label: 'Telugu (Male)', voiceId: 'telugu-male-voice' },
-];
 
 export default function Dashboard() {
   const { user, loading: authLoading, creditsBalance, refreshProfile } = useAuth();
   const router = useRouter();
 
-  const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
-  const [selectedLang, setSelectedLang] = useState(LANGUAGES[0]);
+  // HeyGen API dynamic assets
+  const { data: avatarsRes, error: avatarsErr } = useSWR(user ? '/videos/avatars' : null, fetcher);
+  const { data: voicesRes, error: voicesErr } = useSWR(user ? '/videos/voices' : null, fetcher);
+
+  // Safely parse HeyGen responses
+  const avatars = (() => {
+    if (!avatarsRes) return [];
+    if (Array.isArray(avatarsRes)) return avatarsRes;
+    const d = avatarsRes.data;
+    if (Array.isArray(d)) return d;
+    if (d && Array.isArray(d.avatars)) return d.avatars;
+    if (d && Array.isArray(d.looks)) return d.looks;
+    return [];
+  })();
+
+  const voices = (() => {
+    if (!voicesRes) return [];
+    if (Array.isArray(voicesRes)) return voicesRes;
+    const d = voicesRes.data;
+    if (Array.isArray(d)) return d;
+    if (d && Array.isArray(d.voices)) return d.voices;
+    return [];
+  })();
+
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string>('');
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
+  const [voicePreviewPlaying, setVoicePreviewPlaying] = useState<string | null>(null);
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Search/Filters
+  const [avatarSearch, setAvatarSearch] = useState('');
+  const [avatarGender, setAvatarGender] = useState('all');
+
+  const [voiceSearch, setVoiceSearch] = useState('');
+  const [voiceGender, setVoiceGender] = useState('all');
+  const [voiceLanguage, setVoiceLanguage] = useState('all');
+
   const [script, setScript] = useState('');
   const [rendering, setRendering] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
@@ -52,16 +76,79 @@ export default function Dashboard() {
   const [aiWriting, setAiWriting] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
 
+  useEffect(() => {
+    if (avatars.length > 0 && !selectedAvatarId) {
+      setSelectedAvatarId(avatars[0].id || avatars[0].avatar_id);
+    }
+  }, [avatars, selectedAvatarId]);
+
+  useEffect(() => {
+    if (voices.length > 0 && !selectedVoiceId) {
+      setSelectedVoiceId(voices[0].voice_id);
+    }
+  }, [voices, selectedVoiceId]);
+
+  useEffect(() => {
+    return () => {
+      if (voiceAudioRef.current) {
+        voiceAudioRef.current.pause();
+      }
+    };
+  }, []);
+
+  const playVoicePreview = (voiceId: string, url: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!url) return;
+
+    if (voiceAudioRef.current) {
+      voiceAudioRef.current.pause();
+    }
+
+    if (voicePreviewPlaying === voiceId) {
+      setVoicePreviewPlaying(null);
+      voiceAudioRef.current = null;
+    } else {
+      setVoicePreviewPlaying(voiceId);
+      const audio = new Audio(url);
+      voiceAudioRef.current = audio;
+      audio.play().catch(err => {
+        console.error('Audio playback blocked:', err);
+        setVoicePreviewPlaying(null);
+      });
+      audio.onended = () => {
+        setVoicePreviewPlaying(null);
+        voiceAudioRef.current = null;
+      };
+    }
+  };
+
+  const uniqueLanguages = Array.from(new Set(voices.map(v => v.language))).filter(Boolean).sort();
+
+  const filteredAvatars = avatars.filter(av => {
+    const targetId = av.id || av.avatar_id || '';
+    const nameMatch = av.name?.toLowerCase().includes(avatarSearch.toLowerCase()) || targetId.toLowerCase().includes(avatarSearch.toLowerCase());
+    const genderMatch = avatarGender === 'all' || av.gender?.toLowerCase() === avatarGender.toLowerCase();
+    return nameMatch && genderMatch;
+  });
+
+  const filteredVoices = voices.filter(v => {
+    const nameMatch = v.name?.toLowerCase().includes(voiceSearch.toLowerCase()) || v.voice_id?.toLowerCase().includes(voiceSearch.toLowerCase());
+    const genderMatch = voiceGender === 'all' || v.gender?.toLowerCase() === voiceGender.toLowerCase();
+    const langMatch = voiceLanguage === 'all' || v.language === voiceLanguage;
+    return nameMatch && genderMatch && langMatch;
+  });
+
   const handleGenerateScript = async () => {
     if (!productName.trim() || !productDesc.trim()) return;
     setAiWriting(true);
     setError('');
     try {
+      const activeVoice = voices.find(v => v.voice_id === selectedVoiceId);
       const res = await api.post('/videos/generate-script', {
         productName,
         description: productDesc,
         targetAudience,
-        language: selectedLang.label,
+        language: activeVoice ? activeVoice.language : 'English',
       });
       setScript(res.data.script);
       setShowAiWriter(false);
@@ -97,11 +184,12 @@ export default function Dashboard() {
     setError('');
 
     try {
+      const activeVoice = voices.find(v => v.voice_id === selectedVoiceId);
       await api.post('/videos/generate', {
         script,
-        avatarId: selectedAvatar.id,
-        voiceId: selectedLang.voiceId,
-        language: selectedLang.label,
+        avatarId: selectedAvatarId,
+        voiceId: selectedVoiceId,
+        language: activeVoice ? activeVoice.language : 'English',
       });
       setScript('');
       mutate();
@@ -205,52 +293,162 @@ export default function Dashboard() {
 
           <form onSubmit={handleGenerate} className="flex flex-col gap-6">
             {/* Avatar picker */}
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">1. Select Presenter Model</span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {AVATARS.map((av) => (
-                  <button
-                    type="button"
-                    key={av.id}
-                    onClick={() => setSelectedAvatar(av)}
-                    className={`p-3 rounded-2xl border transition-all text-left flex flex-col items-center gap-2 ${
-                      selectedAvatar.id === av.id
-                        ? 'border-brandGreen bg-brandGreen-light/20'
-                        : 'border-black/5 bg-gray-50/50 hover:bg-gray-50'
-                    }`}
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/5 pb-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">1. Select Presenter Model</span>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search presenters..."
+                      value={avatarSearch}
+                      onChange={(e) => setAvatarSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen max-w-[150px] sm:max-w-xs"
+                    />
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <select
+                    value={avatarGender}
+                    onChange={(e) => setAvatarGender(e.target.value)}
+                    className="px-2 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen"
                   >
-                    <div className="h-16 w-16 rounded-full overflow-hidden border border-black/5">
-                      <img src={av.img} alt={av.name} className="h-full w-full object-cover" />
-                    </div>
-                    <div className="text-center">
-                      <h4 className="font-bold text-xs text-brandGreen-dark">{av.name}</h4>
-                      <span className="text-[10px] text-gray-400 block mt-0.5">{av.role}</span>
-                    </div>
-                  </button>
-                ))}
+                    <option value="all">All Genders</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
               </div>
+
+              {avatarsErr && <div className="text-xs text-red-500 bg-red-50 p-3 rounded-xl">Failed to load presenter models from HeyGen.</div>}
+              {!avatarsRes && !avatarsErr ? (
+                <div className="flex items-center gap-2 text-xs text-gray-400 py-6 justify-center bg-gray-50/50 rounded-2xl border border-dashed border-black/5">
+                  <Loader2 className="w-4 h-4 animate-spin text-brandGreen" />
+                  <span>Loading presenter avatars...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1">
+                  {filteredAvatars.length > 0 ? (
+                    filteredAvatars.map((av) => {
+                      const avId = av.id || av.avatar_id;
+                      return (
+                        <button
+                          type="button"
+                          key={avId}
+                          onClick={() => setSelectedAvatarId(avId)}
+                          className={`p-3 rounded-2xl border transition-all text-left flex flex-col items-center gap-2 relative overflow-hidden ${
+                            selectedAvatarId === avId
+                              ? 'border-brandGreen bg-brandGreen-light/20 shadow-md shadow-brandGreen/5'
+                              : 'border-black/5 bg-gray-50/50 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="h-16 w-16 rounded-full overflow-hidden border border-black/5 bg-gray-100 flex items-center justify-center">
+                            {av.preview_image_url ? (
+                              <img src={av.preview_image_url} alt={av.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <Video className="w-6 h-6 text-gray-300" />
+                            )}
+                          </div>
+                          <div className="text-center w-full min-w-0">
+                            <h4 className="font-bold text-xs text-brandGreen-dark truncate">{av.name || "Unnamed"}</h4>
+                            <span className="text-[9px] text-gray-400 block mt-0.5 capitalize">{av.gender || "neutral"}</span>
+                          </div>
+                          {selectedAvatarId === avId && (
+                            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brandGreen animate-pulse" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="col-span-full py-8 text-center text-xs text-gray-400">No presenter models match your search.</div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Language voice picker */}
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">2. Regional Voice Output</span>
-              <div className="grid grid-cols-2 gap-3">
-                {LANGUAGES.map((lang) => (
-                  <button
-                    type="button"
-                    key={lang.id}
-                    onClick={() => setSelectedLang(lang)}
-                    className={`p-3 rounded-xl border text-left flex items-center justify-between text-xs transition ${
-                      selectedLang.id === lang.id
-                        ? 'border-brandGreen bg-brandGreen-light/20 text-brandGreen-dark font-bold'
-                        : 'border-black/5 text-gray-600 hover:bg-gray-50'
-                    }`}
+            <div className="flex flex-col gap-3 mt-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/5 pb-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">2. Regional Voice Output</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search voice presets..."
+                      value={voiceSearch}
+                      onChange={(e) => setVoiceSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen max-w-[130px] sm:max-w-xs"
+                    />
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <select
+                    value={voiceLanguage}
+                    onChange={(e) => setVoiceLanguage(e.target.value)}
+                    className="px-2 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen max-w-[110px]"
                   >
-                    <span>{lang.label}</span>
-                    <Volume2 className="w-4 h-4 text-brandGreen" />
-                  </button>
-                ))}
+                    <option value="all">All Languages</option>
+                    {uniqueLanguages.map(lang => (
+                      <option key={lang} value={lang}>{lang}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={voiceGender}
+                    onChange={(e) => setVoiceGender(e.target.value)}
+                    className="px-2 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen"
+                  >
+                    <option value="all">All Genders</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
               </div>
+
+              {voicesErr && <div className="text-xs text-red-500 bg-red-50 p-3 rounded-xl">Failed to load voice presets from HeyGen.</div>}
+              {!voicesRes && !voicesErr ? (
+                <div className="flex items-center gap-2 text-xs text-gray-400 py-6 justify-center bg-gray-50/50 rounded-2xl border border-dashed border-black/5">
+                  <Loader2 className="w-4 h-4 animate-spin text-brandGreen" />
+                  <span>Loading voice synthesizers...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+                  {filteredVoices.length > 0 ? (
+                    filteredVoices.map((v) => (
+                      <button
+                        type="button"
+                        key={v.voice_id}
+                        onClick={() => setSelectedVoiceId(v.voice_id)}
+                        className={`p-3 rounded-xl border text-left flex items-center justify-between text-xs transition relative overflow-hidden ${
+                          selectedVoiceId === v.voice_id
+                            ? 'border-brandGreen bg-brandGreen-light/20 text-brandGreen-dark font-bold'
+                            : 'border-black/5 text-gray-600 bg-gray-50/50 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-grow pr-2">
+                          <div className="font-bold text-brandGreen-dark flex items-center gap-1.5">
+                            <span className="truncate">{v.name}</span>
+                            <span className="text-[8px] font-semibold px-1.5 py-0.2 bg-black/5 text-gray-500 rounded-full capitalize flex-shrink-0">{v.gender}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-400 block mt-0.5 truncate">{v.language}</span>
+                        </div>
+                        {v.preview_audio_url && (
+                          <button
+                            type="button"
+                            onClick={(e) => playVoicePreview(v.voice_id, v.preview_audio_url, e)}
+                            className="p-1.5 rounded-full hover:bg-black/5 text-brandGreen transition flex-shrink-0"
+                          >
+                            {voicePreviewPlaying === v.voice_id ? (
+                              <Pause className="w-3.5 h-3.5 fill-brandGreen animate-pulse" />
+                            ) : (
+                              <Volume2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="col-span-full py-8 text-center text-xs text-gray-400">No voice presets match your criteria.</div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Script input */}
