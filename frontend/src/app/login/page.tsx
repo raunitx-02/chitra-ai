@@ -57,8 +57,8 @@ export default function Login() {
       <div className="w-full max-w-md bg-white rounded-3xl p-8 border border-black/5 shadow-xl shadow-brandGreen-dark/5 flex flex-col gap-6">
         <div className="text-center flex flex-col items-center gap-2">
           <Link href="/" className="flex items-center gap-2 text-2xl font-black tracking-wider text-brandGreen-dark">
-            <img src="/logo.png" alt="Chitra AI Logo" className="w-6 h-6 object-contain" />
-            <span>Chitra</span>
+            <img src="/logo.png" alt="RetailStacker AI Logo" className="w-6 h-6 object-contain" />
+            <span>RetailStacker</span>
           </Link>
           <h2 className="text-xl font-bold text-brandGreen-dark mt-2">
             {isRegister ? 'Create Account' : 'Welcome Back'}

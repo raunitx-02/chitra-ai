@@ -10,8 +10,8 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 w-full bg-[#FAFAF8]/85 backdrop-blur border-b border-black/[0.06] px-6 py-4 flex items-center justify-between">
       <Link href="/" className="flex items-center gap-2 text-xl font-bold tracking-wider text-brandGreen-dark">
-        <img src="/logo.png" alt="Chitra AI Logo" className="w-6 h-6 object-contain" />
-        <span>Chitra</span>
+        <img src="/logo.png" alt="RetailStacker AI Logo" className="w-6 h-6 object-contain" />
+        <span>RetailStacker</span>
       </Link>
 
       <div className="flex items-center gap-4">

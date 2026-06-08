@@ -18,7 +18,10 @@ import {
   CheckCircle,
   Pause,
   Search,
-  Filter
+  Filter,
+  Sliders,
+  X,
+  Check
 } from 'lucide-react';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
@@ -31,8 +34,21 @@ export default function Dashboard() {
   const { data: avatarsRes, error: avatarsErr } = useSWR(user ? '/videos/avatars' : null, fetcher);
   const { data: voicesRes, error: voicesErr } = useSWR(user ? '/videos/voices' : null, fetcher);
 
+  // Helper to get character base name key (e.g. "Armando" from "Armando Casual Front")
+  const getCharacterKey = (nameStr: string) => {
+    if (!nameStr) return '';
+    const parts = nameStr.trim().split(/\s+/);
+    if (parts.length === 0) return '';
+    const first = parts[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    const salutations = ['dr', 'mr', 'mrs', 'ms', 'prof', 'doctor'];
+    if (salutations.includes(first) && parts.length > 1) {
+      return (parts[0] + '_' + parts[1]).toLowerCase();
+    }
+    return first;
+  };
+
   // Safely parse HeyGen responses (and group variations by character name)
-  const avatars = (() => {
+  const allAvatars = (() => {
     let rawList: any[] = [];
     if (avatarsRes) {
       if (Array.isArray(avatarsRes)) rawList = avatarsRes;
@@ -43,23 +59,12 @@ export default function Dashboard() {
         else if (d && Array.isArray(d.looks)) rawList = d.looks;
       }
     }
+    return rawList;
+  })();
 
+  const avatars = (() => {
     const seenCharacters = new Set();
-
-    // Helper to get character base name key (e.g. "Armando" from "Armando Casual Front")
-    const getCharacterKey = (nameStr: string) => {
-      if (!nameStr) return '';
-      const parts = nameStr.trim().split(/\s+/);
-      if (parts.length === 0) return '';
-      const first = parts[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-      const salutations = ['dr', 'mr', 'mrs', 'ms', 'prof', 'doctor'];
-      if (salutations.includes(first) && parts.length > 1) {
-        return (parts[0] + '_' + parts[1]).toLowerCase();
-      }
-      return first;
-    };
-
-    return rawList.filter((av: any) => {
+    return allAvatars.filter((av: any) => {
       const avName = av.name || av.avatar_name || '';
       if (!avName) return false;
 
@@ -114,6 +119,10 @@ export default function Dashboard() {
   const [voiceLimit, setVoiceLimit] = useState(24);
 
   const [script, setScript] = useState('');
+  const [visualPrompt, setVisualPrompt] = useState('');
+  const [showProcessingModal, setShowProcessingModal] = useState(false);
+  const [modalStage, setModalStage] = useState(0);
+
   const [rendering, setRendering] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [error, setError] = useState('');
@@ -124,6 +133,13 @@ export default function Dashboard() {
   const [targetAudience, setTargetAudience] = useState('');
   const [aiWriting, setAiWriting] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
+
+  const selectedAvatarObj = allAvatars.find((av: any) => (av.id || av.avatar_id) === selectedAvatarId);
+  const selectedCharKey = selectedAvatarObj ? getCharacterKey(selectedAvatarObj.name || selectedAvatarObj.avatar_name || '') : '';
+  const availableLooks = allAvatars.filter((av: any) => {
+    const avName = av.name || av.avatar_name || '';
+    return getCharacterKey(avName) === selectedCharKey;
+  });
 
   const uniqueLanguages = Array.from(new Set(voices.map((v: any) => v.language))).filter(Boolean).sort();
 
@@ -148,14 +164,16 @@ export default function Dashboard() {
   // Sync selected avatar if not in filtered list
   useEffect(() => {
     if (filteredAvatars.length > 0) {
-      const isSelectedInFiltered = filteredAvatars.some((av: any) => (av.id || av.avatar_id) === selectedAvatarId);
-      if (!isSelectedInFiltered) {
+      const selectedAvatarObj = allAvatars.find((av: any) => (av.id || av.avatar_id) === selectedAvatarId);
+      const selectedCharKey = selectedAvatarObj ? getCharacterKey(selectedAvatarObj.name || selectedAvatarObj.avatar_name || '') : '';
+      const isCharKeySelected = filteredAvatars.some((av: any) => getCharacterKey(av.name || av.avatar_name || '') === selectedCharKey);
+      if (!isCharKeySelected) {
         setSelectedAvatarId(filteredAvatars[0].id || filteredAvatars[0].avatar_id);
       }
     } else if (avatars.length > 0 && !selectedAvatarId) {
       setSelectedAvatarId(avatars[0].id || avatars[0].avatar_id);
     }
-  }, [filteredAvatars, selectedAvatarId, avatars]);
+  }, [filteredAvatars, selectedAvatarId, avatars, allAvatars]);
 
   // Sync selected voice if not in filtered list
   useEffect(() => {
@@ -247,6 +265,14 @@ export default function Dashboard() {
 
   const videos = videoData?.videos || [];
 
+  const modalStages = [
+    { title: "Analyzing UGC script prompt...", description: "Structuring the copy and parsing emotional prompts" },
+    { title: "Choosing character look & outfits...", description: "Selecting clothes and visual settings matching your selection" },
+    { title: "Synthesizing voice presets...", description: "Generating regional voice waveforms and lip-sync markers" },
+    { title: "Stitching media & rendering scenery...", description: "Combining background visual plates with custom AI assets" },
+    { title: "Finalizing UGC video render...", description: "Polishing character lighting and completing the render pipeline" }
+  ];
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!script.trim()) return;
@@ -257,6 +283,12 @@ export default function Dashboard() {
 
     setRendering(true);
     setError('');
+    setShowProcessingModal(true);
+    setModalStage(0);
+
+    const stageInterval = setInterval(() => {
+      setModalStage((prev) => (prev + 1) % modalStages.length);
+    }, 3000);
 
     try {
       const activeVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
@@ -267,9 +299,20 @@ export default function Dashboard() {
         language: activeVoice ? activeVoice.language : 'English',
       });
       setScript('');
+      setVisualPrompt('');
       mutate();
       await refreshProfile();
+
+      // Go to success screen (represented by index 5)
+      clearInterval(stageInterval);
+      setModalStage(5);
+      setTimeout(() => {
+        setShowProcessingModal(false);
+      }, 3500);
+
     } catch (err: any) {
+      clearInterval(stageInterval);
+      setShowProcessingModal(false);
       setError(err.response?.data?.message || 'Video generation initiation failed.');
     } finally {
       setRendering(false);
@@ -305,7 +348,7 @@ export default function Dashboard() {
         key: keyId,
         amount,
         currency,
-        name: 'Chitra AI Credits',
+        name: 'RetailStacker AI Credits',
         description: `Purchase ${plan} package`,
         order_id: orderId,
         handler: async function (response: any) {
@@ -407,6 +450,7 @@ export default function Dashboard() {
                       {visibleAvatars.map((av: any) => {
                         const avId = av.id || av.avatar_id;
                         const avName = av.name || av.avatar_name || "Unnamed";
+                        const isSelected = selectedCharKey === getCharacterKey(avName);
                         return (
                           <div
                             role="button"
@@ -415,7 +459,7 @@ export default function Dashboard() {
                             onMouseEnter={() => setHoveredAvatarId(avId)}
                             onMouseLeave={() => setHoveredAvatarId(null)}
                             className={`rounded-2xl border transition-all text-left flex flex-col relative overflow-hidden cursor-pointer h-[190px] min-h-[190px] w-full group ${
-                              selectedAvatarId === avId
+                              isSelected
                                 ? 'border-brandGreen bg-brandGreen-light/10 shadow-md shadow-brandGreen/5'
                                 : 'border-black/5 bg-gray-50/50 hover:bg-gray-50 hover:scale-[1.01]'
                             }`}
@@ -442,7 +486,7 @@ export default function Dashboard() {
                               <h4 className="font-bold text-xs text-brandGreen-dark truncate">{avName}</h4>
                               <span className="text-[9px] text-gray-400 block mt-0.5 capitalize">{av.gender || "neutral"}</span>
                             </div>
-                            {selectedAvatarId === avId && (
+                            {isSelected && (
                               <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full bg-brandGreen border border-white shadow-sm" />
                             )}
                           </div>
@@ -461,6 +505,57 @@ export default function Dashboard() {
                   ) : (
                     <div className="col-span-full py-8 text-center text-xs text-gray-400">No presenter models match your search.</div>
                   )}
+                </div>
+              )}
+
+              {/* Costume / Background look selector for selected character face */}
+              {availableLooks.length > 1 && (
+                <div className="flex flex-col gap-3 mt-2 bg-gray-50/50 border border-black/5 rounded-2xl p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-brandGreen" />
+                    <span>Costume & Setting/Background ({availableLooks.length} looks available for {selectedAvatarObj?.name?.split(/\s+/)[0] || 'character'})</span>
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[200px] overflow-y-auto pr-1">
+                    {availableLooks.map((look: any) => {
+                      const lookId = look.id || look.avatar_id;
+                      const lookName = look.name || look.avatar_name || 'Default';
+                      // Clean lookName to remove the prefix character name (e.g. "Annie in Pink Suit" -> "Pink Suit")
+                      const charFirstName = selectedAvatarObj?.name?.split(/\s+/)[0] || '';
+                      let displayName = lookName;
+                      if (charFirstName) {
+                        displayName = displayName.replace(new RegExp(`^${charFirstName}`, 'i'), '').trim();
+                      }
+                      // Clean any leftover "in " at the beginning
+                      displayName = displayName.replace(/^(in\s+)/i, '').trim();
+                      displayName = displayName || 'Default Look';
+
+                      const isLookSelected = selectedAvatarId === lookId;
+                      return (
+                        <div
+                          role="button"
+                          key={lookId}
+                          onClick={() => setSelectedAvatarId(lookId)}
+                          className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition cursor-pointer text-xs ${
+                            isLookSelected
+                              ? 'border-brandGreen bg-brandGreen/5 text-brandGreen-dark font-bold ring-1 ring-brandGreen/20 shadow-sm'
+                              : 'border-black/5 bg-white hover:bg-gray-50 text-gray-600'
+                          }`}
+                        >
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-black/5">
+                            {look.preview_image_url ? (
+                              <img src={look.preview_image_url} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <Video className="w-4 h-4 text-gray-300 m-auto" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-grow">
+                            <p className="truncate capitalize font-bold text-[11px] leading-tight text-brandGreen-dark">{displayName}</p>
+                            <span className="text-[8px] text-gray-400 block mt-0.5 truncate">Outfits & Scene</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -592,7 +687,7 @@ export default function Dashboard() {
                         type="text"
                         value={productName}
                         onChange={(e) => setProductName(e.target.value)}
-                        placeholder="e.g. Chitra AI"
+                        placeholder="e.g. RetailStacker AI"
                         className="bg-white border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none"
                       />
                     </div>
@@ -637,15 +732,42 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+            </div>
 
-              <textarea
-                required
-                rows={5}
-                value={script}
-                onChange={(e) => setScript(e.target.value)}
-                placeholder="Write your promo text here. AI will sync speech and burn captions automatically..."
-                className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3.5 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition resize-none leading-relaxed"
-              />
+            {/* UGC Video Prompts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              {/* Spoken Script (Speech Output) */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                    <Volume2 className="w-3.5 h-3.5 text-brandGreen" />
+                    <span>3. Spoken Script (Audio Output)</span>
+                  </label>
+                </div>
+                <textarea
+                  required
+                  rows={4}
+                  value={script}
+                  onChange={(e) => setScript(e.target.value)}
+                  placeholder="Paste the EXACT words you want the avatar to speak out loud. (e.g. 'Hey guys! Look at this new app...')"
+                  className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition resize-none leading-relaxed flex-grow min-h-[100px]"
+                />
+              </div>
+
+              {/* Visual Prompt (Scenery, Outfits, & Expressions) */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                  <Video className="w-3.5 h-3.5 text-brandGreen" />
+                  <span>4. Visual Scene Guidelines</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={visualPrompt}
+                  onChange={(e) => setVisualPrompt(e.target.value)}
+                  placeholder="Describe your scene setup (e.g. 'Cozy home background, smiling face expressions, wearing casual pink suit jacket')"
+                  className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition resize-none leading-relaxed flex-grow min-h-[100px]"
+                />
+              </div>
             </div>
 
             <button
@@ -749,6 +871,76 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Apple-style smooth bouncing progress modal */}
+      {showProcessingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white/90 backdrop-blur-xl border border-white/40 rounded-[32px] p-8 max-w-md w-full shadow-2xl shadow-black/20 flex flex-col items-center text-center animate-apple-bounce">
+            
+            {/* Stage-based Animated Icon */}
+            <div className="relative flex items-center justify-center w-24 h-24 mb-6 rounded-full bg-brandGreen/10 animate-pulse-ring">
+              {modalStage === 5 ? (
+                <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg animate-in zoom-in duration-300">
+                  <Check className="w-8 h-8" />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-brandGreen flex items-center justify-center text-white shadow-lg">
+                  <Sparkles className="w-7 h-7 animate-pulse text-white" />
+                </div>
+              )}
+            </div>
+
+            {modalStage === 5 ? (
+              <>
+                <h3 className="text-xl font-bold text-brandGreen-dark mb-2">UGC Ad Initiated!</h3>
+                <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
+                  Your video render is now offloaded to our background processing pipeline. Check progress in the right sidebar!
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-bold text-brandGreen-dark mb-2">Rendering UGC Ad Video</h3>
+                <p className="text-xs text-brandGreen font-semibold px-3 py-1 bg-brandGreen-light/20 rounded-full mb-6 uppercase tracking-wider animate-pulse">
+                  Step {modalStage + 1} of 5
+                </p>
+
+                {/* Stepper progress indicator list */}
+                <div className="w-full text-left bg-gray-50/50 border border-black/5 rounded-2xl p-4.5 flex flex-col gap-3">
+                  {modalStages.map((stage, idx) => {
+                    const isDone = idx < modalStage;
+                    const isActive = idx === modalStage;
+                    return (
+                      <div key={idx} className={`flex items-start gap-3 transition-opacity duration-300 ${isDone ? 'opacity-50' : isActive ? 'opacity-100' : 'opacity-30'}`}>
+                        <div className="mt-0.5">
+                          {isDone ? (
+                            <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-white">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </div>
+                          ) : isActive ? (
+                            <div className="w-4 h-4 rounded-full bg-brandGreen flex items-center justify-center text-white animate-pulse">
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            </div>
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-gray-300 bg-white" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-bold ${isActive ? 'text-brandGreen-dark' : 'text-gray-600'}`}>{stage.title}</p>
+                          {isActive && <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{stage.description}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-6 text-[10px] text-gray-400 max-w-xs">
+                  This modal is powered by HeyGen API. Outfits, background sets, and accents are being synthesized in the cloud.
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

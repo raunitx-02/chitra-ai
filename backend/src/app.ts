@@ -48,7 +48,7 @@ app.use('/api/payments', paymentRoutes);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-  console.log(`[Chitra AI Video Server] Running on localhost port ${PORT}`);
+  console.log(`[RetailStacker AI Video Server] Running on localhost port ${PORT}`);
   resumeActivePolling();
 });
 

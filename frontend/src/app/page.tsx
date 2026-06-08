@@ -33,10 +33,10 @@ const AVATARS = [
 ];
 
 const VOICES = [
-  { lang: 'Hindi', label: 'Male - Deep Tone', phrase: 'नमस्ते, यह चित्रा एआई का हिंदी वॉइस प्रिव्यू है।', langCode: 'hi-IN' },
-  { lang: 'Tamil', label: 'Female - Expressive', phrase: 'வணக்கம், இது சித்ரா ஏஐ-யின் தமிழ் குரல் முன்னோட்டம் ஆகும்.', langCode: 'ta-IN' },
-  { lang: 'English (IN)', label: 'Female - Professional', phrase: 'Hello, this is the Indian English voice preview of Chitra AI.', langCode: 'en-IN' },
-  { lang: 'Telugu', label: 'Male - Friendly Voice', phrase: 'నమస్కారం, ఇది చిత్రా ఏఐ యొక్క తెలుగు వాయిస్ ప్రివ్యూ.', langCode: 'te-IN' },
+  { lang: 'Hindi', label: 'Male - Deep Tone', phrase: 'नमस्ते, यह रिटेलस्टैकर एआई का हिंदी वॉइस प्रिव्यू है।', langCode: 'hi-IN' },
+  { lang: 'Tamil', label: 'Female - Expressive', phrase: 'வணக்கம், இது ரீடெயில்ஸ்டாக்கர் ஏஐ-யின் தமிழ் குரல் முன்னோட்டம் ஆகும்.', langCode: 'ta-IN' },
+  { lang: 'English (IN)', label: 'Female - Professional', phrase: 'Hello, this is the Indian English voice preview of RetailStacker AI.', langCode: 'en-IN' },
+  { lang: 'Telugu', label: 'Male - Friendly Voice', phrase: 'నమస్కారం, ఇది రిటైల్ స్టాకర్ ఏఐ యొక్క తెలుగు వాయిస్ ప్రివ్యూ.', langCode: 'te-IN' },
 ];
 
 const ScrollSection = ({ children, className = "", id = "" }: { children: React.ReactNode; className?: string; id?: string }) => {
@@ -256,7 +256,7 @@ export default function Home() {
               Generate Sales Scripts In Seconds.
             </h2>
             <p className="text-gray-600 leading-relaxed text-base md:text-lg">
-              Stuck on marketing angles? Input your product name and key selling points. Chitra AI's built-in script generator will automatically compile high-converting hooks, customer pain points, and convincing call-to-actions tailored specifically to Indian regional dialects.
+              Stuck on marketing angles? Input your product name and key selling points. RetailStacker AI's built-in script generator will automatically compile high-converting hooks, customer pain points, and convincing call-to-actions tailored specifically to Indian regional dialects.
             </p>
             <div className="flex flex-col gap-3.5 border-t border-black/5 pt-5 mt-2">
               <div className="flex items-start gap-3">
@@ -284,14 +284,14 @@ export default function Home() {
             <div className="flex flex-col gap-3 text-xs">
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-gray-400 text-[10px] uppercase">Product name</span>
-                <div className="bg-gray-50 border border-black/5 px-3 py-2 rounded-xl font-medium text-brandGreen-dark">Chitra Clothing Co.</div>
+                <div className="bg-gray-50 border border-black/5 px-3 py-2 rounded-xl font-medium text-brandGreen-dark">RetailStacker Clothing Co.</div>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-gray-400 text-[10px] uppercase">Core offerings</span>
                 <div className="bg-gray-50 border border-black/5 px-3 py-2 rounded-xl font-medium text-brandGreen-dark">Stain-resistant linen kurtas that stay cool in peak summer heat</div>
               </div>
               <div className="bg-brandGreen-light/20 text-brandGreen-dark p-3.5 rounded-xl border border-brandGreen/10 leading-relaxed font-medium text-[11px]">
-                <strong>AI Script Generated (Hindi):</strong> "हे दोस्तों! क्या आप गर्मी में पसीने और कपड़ों के दाग से परेशान हैं? पेश है Chitra Clothing के कमाल के stain-resistant linen kurtas..."
+                <strong>AI Script Generated (Hindi):</strong> "हे दोस्तों! क्या आप गर्मी में पसीने और कपड़ों के दाग से परेशान हैं? पेश है RetailStacker Clothing के कमाल के stain-resistant linen kurtas..."
               </div>
             </div>
           </div>
@@ -401,7 +401,7 @@ export default function Home() {
               Automated Captions For Muted Viewports.
             </h2>
             <p className="text-gray-600 leading-relaxed text-base md:text-lg">
-              Over 85% of mobile users watch Reels and Shorts on mute. Chitra AI dynamically syncs voice track speech data to automatically burn bright, high-retention subtitles into the visual output. The video alongside exhibits the automated captioned result for a lifestyle shoe brand.
+              Over 85% of mobile users watch Reels and Shorts on mute. RetailStacker AI dynamically syncs voice track speech data to automatically burn bright, high-retention subtitles into the visual output. The video alongside exhibits the automated captioned result for a lifestyle shoe brand.
             </p>
             <div className="flex flex-col gap-3 mt-2">
               {[
@@ -454,12 +454,12 @@ export default function Home() {
         </ScrollSection>
       </div>
 
-      {/* 4. Comparison Section (Chitra AI vs Traditional Agencies) */}
+      {/* 4. Comparison Section (RetailStacker AI vs Traditional Agencies) */}
       <ScrollSection className="bg-white py-20 lg:py-28 px-6 border-y border-black/[0.03]">
         <div className="max-w-7xl mx-auto flex flex-col gap-16">
           <div className="text-center max-w-2xl mx-auto flex flex-col gap-2">
             <span className="text-xs font-bold uppercase tracking-widest text-brandGreen">Smart Content Creation</span>
-            <h2 className="font-heading text-3xl md:text-4xl font-bold text-brandGreen-dark">Traditional Production vs. Chitra AI</h2>
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-brandGreen-dark">Traditional Production vs. RetailStacker AI</h2>
             <p className="text-xs text-gray-400 mt-1">Why scaling D2C brands are moving away from traditional agencies.</p>
           </div>
 
@@ -489,14 +489,14 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Chitra AI card */}
+            {/* RetailStacker AI card */}
             <div className="border border-brandGreen bg-brandGreen-light/10 rounded-3xl p-8 flex flex-col gap-6 relative shadow-lg shadow-brandGreen/5">
               <span className="absolute -top-3 right-6 bg-brandGreen text-white text-[9px] font-bold uppercase tracking-wider px-3.5 py-1 rounded-full">
                 Highly Scalable
               </span>
               <h3 className="font-bold text-lg text-brandGreen-dark flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-brandGreen" />
-                <span>Chitra AI Workspace</span>
+                <span>RetailStacker AI Workspace</span>
               </h3>
               <div className="flex flex-col gap-4 text-xs text-brandGreen-dark">
                 <div className="flex items-start gap-3">
@@ -629,9 +629,9 @@ export default function Home() {
           <div className="flex flex-col gap-4">
             {[
               { q: 'How many videos can I generate per credit?', a: 'Generating a video costs 10 credits. A Basic top-up pack (1,000 credits) allows you to render up to 100 HD marketing videos.' },
-              { q: 'Does Chitra AI generate video script automatically?', a: 'Yes, inside the studio workshop dashboard, you can toggle the "Write script with AI" helper, enter your product parameters, and the AI will auto-write copy in Hindi, Tamil, Telugu or English.' },
+              { q: 'Does RetailStacker AI generate video script automatically?', a: 'Yes, inside the studio workshop dashboard, you can toggle the "Write script with AI" helper, enter your product parameters, and the AI will auto-write copy in Hindi, Tamil, Telugu or English.' },
               { q: 'Can I choose different languages and accents?', a: 'Yes, our platform supports Hindi, Tamil, Telugu, Kannada, English (IN), and 5+ more regional accents.' },
-              { q: 'Are these videos copyright-free for advertising?', a: 'Yes. All video rendering exports generated on Chitra AI belong to you. You are free to run them as paid advertisements on Meta, Google, TikTok, or YouTube.' },
+              { q: 'Are these videos copyright-free for advertising?', a: 'Yes. All video rendering exports generated on RetailStacker AI belong to you. You are free to run them as paid advertisements on Meta, Google, TikTok, or YouTube.' },
               { q: 'Do these videos have a watermark?', a: 'No, paid plans do not contain watermarks. You own the content rights completely.' },
               { q: 'How does the Razorpay checkout and transaction verification work?', a: 'When you purchase a credit top-up pack, Razorpay generates a secure transaction token. Once payment succeeds, credits are automatically added to your workspace instantly.' }
             ].map((faq, idx) => (
@@ -652,8 +652,8 @@ export default function Home() {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12 text-sm">
           <div className="flex flex-col gap-3">
             <h3 className="text-white font-bold text-lg flex items-center gap-2">
-              <img src="/logo.png" alt="Chitra Logo" className="w-5 h-5 object-contain" />
-              <span>Chitra AI</span>
+              <img src="/logo.png" alt="RetailStacker Logo" className="w-5 h-5 object-contain" />
+              <span>RetailStacker AI</span>
             </h3>
             <p className="text-xs text-white/60 leading-relaxed max-w-xs">
               Automated high-converting video and Reels generator trained on your brand guidelines.
@@ -673,7 +673,7 @@ export default function Home() {
           </div>
         </div>
         <div className="max-w-7xl mx-auto border-t border-white/10 mt-12 pt-8 flex justify-between text-xs text-white/40">
-          <span>© {new Date().getFullYear()} Chitra. Made with ♥ in India.</span>
+          <span>© {new Date().getFullYear()} RetailStacker. Made with ♥ in India.</span>
           <span>Unsubscribe</span>
         </div>
       </footer>

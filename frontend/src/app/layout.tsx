@@ -4,7 +4,7 @@ import { AuthProvider } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
 
 export const metadata: Metadata = {
-  title: "Chitra AI — Your business's AI marketing partner",
+  title: "RetailStacker AI — Your business's AI marketing partner",
   description: "Generate ultra-realistic marketing videos, Instagram Reels, and YouTube Shorts matching your brand parameters using AI in minutes.",
 };
 
