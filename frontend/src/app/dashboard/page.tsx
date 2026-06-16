@@ -427,8 +427,8 @@ export default function Dashboard() {
       const activeVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
       await api.post('/videos/generate', {
         script: effectiveScript,
-        avatarId: mode === 'avatar' ? selectedAvatarId : undefined,
-        voiceId: mode === 'avatar' ? selectedVoiceId : undefined,
+        avatarId: selectedAvatarId || undefined,
+        voiceId: selectedVoiceId || undefined,
         language: activeVoice ? activeVoice.language : 'English',
         visualPrompt,
         duration,
