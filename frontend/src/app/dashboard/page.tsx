@@ -138,8 +138,85 @@ export default function Dashboard() {
 
   // ── Mode: avatar | product ────────────────────────────────────────────────
   const [mode, setMode] = useState<'avatar' | 'product'>('avatar');
-  const [productImageUrl, setProductImageUrl] = useState('');
+  
+  // ── Product Ad Upload & Analysis States ──────────────────────────────────
+  const [productImageFile, setProductImageFile] = useState<File | null>(null);
+  const [productImageBase64, setProductImageBase64] = useState('');
+  const [productImageMime, setProductImageMime] = useState('image/jpeg');
   const [productImagePreview, setProductImagePreview] = useState('');
+  const [productAnalysis, setProductAnalysis] = useState<any>(null);
+  const [analyzingProduct, setAnalyzingProduct] = useState(false);
+  const [analysisError, setAnalysisError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Convert file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data:image/jpeg;base64, prefix
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+    });
+  };
+
+  const handleProductImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    setProductImageFile(file);
+    setProductImageMime(file.type);
+    setProductAnalysis(null);
+    setAnalysisError('');
+    
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setProductImagePreview(previewUrl);
+    
+    // Convert to base64
+    const b64 = await fileToBase64(file);
+    setProductImageBase64(b64);
+    
+    // Auto-trigger analysis
+    analyzeProductImage(b64, file.type);
+  };
+
+  const analyzeProductImage = async (base64: string, mime: string) => {
+    setAnalyzingProduct(true);
+    setAnalysisError('');
+    try {
+      const res = await api.post('/product/analyze', {
+        imageBase64: base64,
+        mimeType: mime,
+      });
+      const analysis = res.data.analysis;
+      setProductAnalysis(analysis);
+      // Auto-populate script and visual prompt from AI
+      setScript(analysis.adScript || '');
+      setVisualPrompt(analysis.visualPrompt || '');
+    } catch (err: any) {
+      setAnalysisError(err.response?.data?.message || 'AI analysis failed. You can still write your own script.');
+    } finally {
+      setAnalyzingProduct(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleProductImageFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => setIsDragging(false);
 
   // ── Script / prompts ──────────────────────────────────────────────────────
   const [script, setScript] = useState('');
@@ -284,7 +361,7 @@ export default function Dashboard() {
     const effectiveScript = script.trim();
     if (!effectiveScript) { setError('Please enter a script or description.'); return; }
     if (mode === 'avatar' && !selectedAvatarId) { setError('Please select an avatar.'); return; }
-    if (mode === 'product' && !productImageUrl.trim()) { setError('Please enter a product image URL.'); return; }
+    if (mode === 'product' && !productImageBase64) { setError('Please upload a product image first.'); return; }
     if (creditsBalance < 10) { setError('Insufficient credits. Please top up.'); return; }
 
     setRendering(true); setError('');
@@ -306,9 +383,11 @@ export default function Dashboard() {
         orientation,
         style: selectedStyle?.id,
         mode,
-        productImageUrl: mode === 'product' ? productImageUrl : undefined,
+        productImageBase64: mode === 'product' ? productImageBase64 : undefined,
+        productImageMime: mode === 'product' ? productImageMime : undefined,
       });
-      setScript(''); setVisualPrompt(''); setProductImageUrl(''); setProductImagePreview('');
+      setScript(''); setVisualPrompt('');
+      setProductImageFile(null); setProductImageBase64(''); setProductImagePreview(''); setProductAnalysis(null);
       mutate(); await refreshProfile();
       clearInterval(stageInterval);
       setModalStage(5);
@@ -604,36 +683,160 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── PRODUCT MODE: Image upload ─────────────────────────────── */}
+            {/* ── PRODUCT MODE: AI Product Ad Creator ────────────────── */}
             {mode === 'product' && (
               <div className="px-6 pt-5 pb-4">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                  <Image className="w-3.5 h-3.5 text-brandGreen" /> Product Image
-                </span>
-                <div className="flex flex-col gap-3">
-                  <input
-                    type="url"
-                    value={productImageUrl}
-                    onChange={e => { setProductImageUrl(e.target.value); setProductImagePreview(e.target.value); }}
-                    placeholder="Paste your product image URL (e.g. https://yoursite.com/product.jpg)"
-                    className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition"
-                  />
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Image className="w-3.5 h-3.5 text-brandGreen" /> Product Image
+                  </span>
                   {productImagePreview && (
-                    <div className="relative w-32 h-32 rounded-2xl overflow-hidden border border-black/5 bg-gray-100">
-                      <img
-                        src={productImagePreview}
-                        alt="Product preview"
-                        className="w-full h-full object-contain p-2"
-                        onError={() => setProductImagePreview('')}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductImageFile(null);
+                        setProductImageBase64('');
+                        setProductImagePreview('');
+                        setProductAnalysis(null);
+                        setScript('');
+                        setVisualPrompt('');
+                      }}
+                      className="text-xs text-red-400 hover:text-red-600 font-semibold flex items-center gap-1 transition"
+                    >
+                      <X className="w-3 h-3" /> Remove
+                    </button>
                   )}
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-700 leading-relaxed">
-                    <strong>How it works:</strong> The AI will animate your product image into a short talking ad. Add a script below with the product pitch text, and the AI character will speak it while displaying your product.
-                  </div>
                 </div>
+
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleProductImageFile(f); }}
+                />
+
+                {!productImagePreview ? (
+                  /* ── Drag & Drop Upload Zone ── */
+                  <div
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all ${
+                      isDragging
+                        ? 'border-brandGreen bg-brandGreen/5 scale-[1.01]'
+                        : 'border-black/10 hover:border-brandGreen/50 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${isDragging ? 'bg-brandGreen/15' : 'bg-gray-100'}`}>
+                      <Upload className={`w-7 h-7 transition-colors ${isDragging ? 'text-brandGreen' : 'text-gray-400'}`} />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-brandGreen-dark">Drop your product image here</p>
+                      <p className="text-xs text-gray-400 mt-1">or click to browse · JPG, PNG, WEBP supported</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-gray-50 border border-black/5 rounded-xl px-4 py-2">
+                      <Sparkles className="w-3.5 h-3.5 text-brandGreen" />
+                      <span>AI will analyze your product and <strong className="text-brandGreen-dark">auto-generate your ad script</strong></span>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── Image uploaded: Show preview + analysis ── */
+                  <div className="flex flex-col gap-4">
+                    
+                    {/* Image preview + analysis side by side */}
+                    <div className="flex gap-4">
+                      {/* Product thumbnail */}
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-28 h-28 flex-shrink-0 rounded-2xl overflow-hidden border-2 border-black/5 bg-gray-100 cursor-pointer hover:opacity-80 transition relative group"
+                      >
+                        <img src={productImagePreview} alt="Product" className="w-full h-full object-contain p-2" />
+                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center rounded-2xl">
+                          <Upload className="w-5 h-5 text-white" />
+                        </div>
+                      </div>
+
+                      {/* Analysis results or loading */}
+                      <div className="flex-grow min-w-0">
+                        {analyzingProduct ? (
+                          <div className="flex flex-col gap-3 h-full justify-center">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-brandGreen-dark">
+                              <Loader2 className="w-4 h-4 animate-spin text-brandGreen" />
+                              <span>AI is analyzing your product...</span>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="h-3 bg-gray-100 rounded-full animate-pulse w-3/4" />
+                              <div className="h-3 bg-gray-100 rounded-full animate-pulse w-1/2" />
+                              <div className="h-3 bg-gray-100 rounded-full animate-pulse w-2/3" />
+                            </div>
+                            <p className="text-[10px] text-gray-400">Generating ad script, tagline and scene setup...</p>
+                          </div>
+                        ) : analysisError ? (
+                          <div className="flex flex-col gap-2">
+                            <div className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl p-3">{analysisError}</div>
+                            <button
+                              type="button"
+                              onClick={() => analyzeProductImage(productImageBase64, productImageMime)}
+                              className="text-xs font-bold text-brandGreen hover:underline flex items-center gap-1"
+                            >
+                              <Sparkles className="w-3 h-3" /> Retry AI Analysis
+                            </button>
+                          </div>
+                        ) : productAnalysis ? (
+                          <div className="flex flex-col gap-2">
+                            {/* Product name + category */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-sm text-brandGreen-dark">{productAnalysis.productName}</h4>
+                              <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 bg-brandGreen/10 text-brandGreen-dark rounded-full">{productAnalysis.category}</span>
+                            </div>
+                            {/* Tagline */}
+                            {productAnalysis.tagline && (
+                              <p className="text-[11px] italic text-gray-500">"{productAnalysis.tagline}"</p>
+                            )}
+                            {/* Target audience */}
+                            <p className="text-[10px] text-gray-400">
+                              <span className="font-semibold text-gray-500">Audience:</span> {productAnalysis.targetAudience}
+                            </p>
+                            {/* Key features */}
+                            {productAnalysis.keyFeatures && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {productAnalysis.keyFeatures.slice(0, 3).map((f: string, i: number) => (
+                                  <span key={i} className="text-[9px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{f}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* AI analysis success banner */}
+                    {productAnalysis && !analyzingProduct && (
+                      <div className="flex items-start gap-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5">
+                        <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-emerald-700">AI analysis complete!</p>
+                          <p className="text-[10px] text-emerald-600 mt-0.5">Ad script and scene setup have been auto-filled below. You can edit them before generating.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => analyzeProductImage(productImageBase64, productImageMime)}
+                          className="flex-shrink-0 text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                        >
+                          Re-analyze
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
+
 
             {/* Divider */}
             <div className="border-t border-black/5 mx-6" />
@@ -1236,29 +1439,57 @@ export default function Dashboard() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-xs text-gray-400">Attach a product image to create an animated product ad. This will switch your studio to Product Ad mode.</p>
+            <p className="text-xs text-gray-400">Upload your product image to create an AI-powered animated product ad.</p>
+            
+            {/* Hidden file input for attachments modal */}
             <input
-              type="url"
-              value={productImageUrl}
-              onChange={e => { setProductImageUrl(e.target.value); setProductImagePreview(e.target.value); }}
-              placeholder="Paste product image URL (https://...)"
-              className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen"
-            />
-            {productImagePreview && (
-              <img src={productImagePreview} alt="Preview" className="w-full max-h-40 object-contain rounded-xl border border-black/5 bg-gray-50 p-2" onError={() => setProductImagePreview('')} />
-            )}
-            <button
-              onClick={() => {
-                if (productImageUrl.trim()) {
+              type="file"
+              accept="image/*"
+              id="attachments-file-input"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) {
+                  handleProductImageFile(f);
                   setMode('product');
                   setShowAttachmentsModal(false);
                 }
               }}
-              disabled={!productImageUrl.trim()}
-              className="bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5"
+            />
+
+            {productImagePreview ? (
+              <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                <img src={productImagePreview} alt="Preview" className="w-14 h-14 object-contain rounded-xl border border-black/5 bg-white p-1 flex-shrink-0" />
+                <div className="flex-grow min-w-0">
+                  <p className="text-xs font-bold text-emerald-700">Product image loaded</p>
+                  <p className="text-[10px] text-emerald-600 truncate">{productImageFile?.name}</p>
+                </div>
+              </div>
+            ) : (
+              <label
+                htmlFor="attachments-file-input"
+                className="border-2 border-dashed border-black/10 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-brandGreen/50 hover:bg-gray-50 transition"
+              >
+                <Upload className="w-8 h-8 text-gray-300" />
+                <span className="text-sm font-semibold text-gray-500">Click to upload product image</span>
+                <span className="text-[10px] text-gray-400">JPG, PNG, WEBP supported</span>
+              </label>
+            )}
+
+            <button
+              onClick={() => {
+                if (productImagePreview) {
+                  setMode('product');
+                  setShowAttachmentsModal(false);
+                } else {
+                  document.getElementById('attachments-file-input')?.click();
+                }
+              }}
+              className="bg-brandGreen-dark hover:bg-[#0E4A27] text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5"
             >
-              <ArrowRight className="w-4 h-4" /> Use in Product Ad Mode
+              <ArrowRight className="w-4 h-4" /> {productImagePreview ? 'Switch to Product Ad Mode' : 'Upload Product Image'}
             </button>
+
           </div>
         </ModalBackdrop>
       )}

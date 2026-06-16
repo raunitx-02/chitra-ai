@@ -93,20 +93,21 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       voiceId,
       language,
       visualPrompt,
-      duration,        // '15' | '30' | '60' | 'auto'
-      orientation,     // 'portrait' | 'landscape' | 'square'
-      style,           // style id string
-      mode,            // 'avatar' | 'product'
-      productImageUrl, // for product/talking_photo mode
+      duration,           // '15' | '30' | '60' | 'auto'
+      orientation,        // 'portrait' | 'landscape' | 'square'
+      style,              // style id string
+      mode,               // 'avatar' | 'product'
+      productImageBase64, // base64 encoded product image
+      productImageMime,   // mime type e.g. 'image/jpeg'
     } = req.body;
 
     // Validate required fields based on mode
     if (mode === 'product') {
-      if (!productImageUrl) {
-        return res.status(400).json({ message: 'Product image URL is required for Product Ad mode.' });
+      if (!productImageBase64) {
+        return res.status(400).json({ message: 'Product image is required for Product Ad mode.' });
       }
       if (!script) {
-        return res.status(400).json({ message: 'Script/description is required.' });
+        return res.status(400).json({ message: 'Ad script/description is required.' });
       }
     } else {
       if (!script || !avatarId || !voiceId) {
@@ -128,7 +129,7 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
     const video = await prisma.video.create({
       data: {
         userId: user.id,
-        script: script || productImageUrl,
+        script: script || 'product_ad',
         avatarId: avatarId || 'product_mode',
         voiceId: voiceId || 'none',
         language: language || 'English',
@@ -153,14 +154,43 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       try {
         let characterInput: any;
 
+
         if (mode === 'product') {
-          // Talking photo / product animation mode
+          // Upload base64 image to ImgBB to get a public URL for HeyGen
+          let productPublicUrl = '';
+          try {
+            const FormData = require('form-data');
+            const imgbbRes = await axios.post(
+              'https://api.imgbb.com/1/upload',
+              new URLSearchParams({
+                key: process.env.IMGBB_API_KEY || 'a4dc406e0a1def39a6fd18cda9ef6a64',
+                image: productImageBase64,
+                expiration: '0', // never expire
+              }),
+              { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            );
+            productPublicUrl = imgbbRes.data?.data?.url || imgbbRes.data?.data?.display_url || '';
+            console.log(`[Product Upload] Uploaded to ImgBB: ${productPublicUrl}`);
+          } catch (uploadErr: any) {
+            console.error('[Product Upload] ImgBB upload failed:', uploadErr.message);
+            // Fallback: use a data URL directly if ImgBB fails
+            productPublicUrl = `data:${productImageMime};base64,${productImageBase64}`;
+          }
+
+          // For product mode: use a default avatar that presents the product
+          // The product image will be set as the background
           characterInput = {
-            type: 'talking_photo',
-            talking_photo_url: productImageUrl,
-            talking_photo_style: 'stable',
-            expression: 'default',
+            type: 'avatar',
+            avatar_id: avatarId || 'Daisy-inskirt-20220818', // Use selected avatar or default
+            avatar_style: 'normal',
           };
+
+          // Use the product image as background (overridden below if visualPrompt also provided)
+          if (productPublicUrl && productPublicUrl.startsWith('http')) {
+            // Will be set as background below
+            (req as any)._productBgUrl = productPublicUrl;
+          }
+
         } else {
           characterInput = {
             type: 'avatar',
@@ -180,17 +210,25 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
           },
         };
 
-        // Apply visual prompt background if provided
-        if (visualPrompt && visualPrompt.trim().length > 0) {
+        // Apply background: product image for product mode, AI-generated for visual prompt
+        const productBgUrl = (req as any)._productBgUrl;
+        if (productBgUrl) {
+          // Product mode: use uploaded product image as video background
+          sceneInput.background = {
+            type: 'image',
+            url: productBgUrl,
+          };
+          console.log(`[HeyGen Render] Applied Product Image as Background: ${productBgUrl}`);
+        } else if (visualPrompt && visualPrompt.trim().length > 0) {
           const bgPrompt = `${visualPrompt.trim()}, blurred background, photorealistic portrait studio setting, soft bokeh, high resolution`;
           const generatedBgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(bgPrompt)}?width=${width}&height=${height}&nologo=true`;
-          
           sceneInput.background = {
             type: 'image',
             url: generatedBgUrl,
           };
-          console.log(`[HeyGen Render] Applied Custom AI Background: ${generatedBgUrl}`);
+          console.log(`[HeyGen Render] Applied AI Background: ${generatedBgUrl}`);
         }
+
 
         // Build the request payload
         const payload: any = {
@@ -254,7 +292,8 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       }
     } else {
       // Mock processing for sandbox environments
-      console.log(`[Mock Generation] Starting video render for: "${(script || productImageUrl || '').slice(0, 30)}..."`);
+      console.log(`[Mock Generation] Starting video render for: "${(script || '').slice(0, 30)}..."`);
+
       await prisma.video.update({
         where: { id: video.id },
         data: { status: VideoStatus.PROCESSING },
