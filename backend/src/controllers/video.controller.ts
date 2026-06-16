@@ -13,6 +13,72 @@ let cachedVoices: any = null;
 let cachedVoicesTime = 0;
 const CACHE_TTL = 30 * 60 * 1000; // Cache for 30 minutes
 
+// Curated styles list matching HeyGen's style categories
+const CURATED_STYLES = [
+  { id: 'retro_tech_1', name: 'Strategy Drop', category: 'Retro Tech', preview: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'cinematic_1', name: 'Podcast Studio', category: 'Cinematic', preview: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'pop_culture_1', name: 'Product Focus', category: 'Pop Culture', preview: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'print_1', name: 'Bold Red', category: 'Print', preview: 'https://images.unsplash.com/photo-1542744094-24638eff58bb?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'handmade_1', name: 'Paper Cutout', category: 'Handmade', preview: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'iconic_artist_1', name: 'Grunge Title', category: 'Iconic Artist', preview: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'ugc_1', name: 'Product Monster', category: 'Pop Culture', preview: 'https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'print_2', name: 'Minimal White', category: 'Print', preview: 'https://images.unsplash.com/photo-1611532736573-418036a57fbe?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'cinematic_2', name: 'UGC Creator', category: 'Cinematic', preview: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'print_3', name: 'The End Card', category: 'Print', preview: 'https://images.unsplash.com/photo-1519810755548-39cd217da494?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'retro_tech_2', name: 'Tech Minimal', category: 'Retro Tech', preview: 'https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'handmade_2', name: 'Question Mark', category: 'Handmade', preview: 'https://images.unsplash.com/photo-1516117172878-fd2c41f4a759?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'iconic_artist_2', name: 'Smiley Face', category: 'Iconic Artist', preview: 'https://images.unsplash.com/photo-1531747056595-07f6a15a2b7c?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'pop_culture_2', name: 'Street Style', category: 'Pop Culture', preview: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'cinematic_3', name: 'The Problem', category: 'Cinematic', preview: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+  { id: 'retro_tech_3', name: 'Neon Grid', category: 'Retro Tech', preview: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&h=225&fit=crop&auto=format', heygen_template: null },
+];
+
+// Helper to compute width/height from orientation and resolution tier
+function getDimensions(orientation: string, resolution: string): { width: number; height: number } {
+  if (orientation === 'landscape') {
+    if (resolution === '4k') return { width: 3840, height: 2160 };
+    if (resolution === '1080p') return { width: 1920, height: 1080 };
+    return { width: 1280, height: 720 };
+  } else if (orientation === 'square') {
+    if (resolution === '4k') return { width: 2160, height: 2160 };
+    if (resolution === '1080p') return { width: 1080, height: 1080 };
+    return { width: 720, height: 720 };
+  } else {
+    // portrait (default)
+    if (resolution === '4k') return { width: 2160, height: 3840 };
+    if (resolution === '1080p') return { width: 1080, height: 1920 };
+    return { width: 720, height: 1280 };
+  }
+}
+
+// Helper to get video resolution based on plan purchases
+async function getUserVideoResolution(userId: string): Promise<string> {
+  const lastTx = await prisma.transaction.findFirst({
+    where: {
+      userId,
+      status: 'SUCCESS'
+    },
+    orderBy: {
+      createdAt: 'desc'
+    }
+  });
+
+  if (!lastTx) {
+    return '720p'; // Default to SD for trial users
+  }
+
+  // Basic -> ₹1999 (SD -> 720p)
+  // Pro -> ₹4999 (HD -> 1080p)
+  // Business -> ₹9999 (4K -> 4k)
+  if (lastTx.amount >= 9999) {
+    return '4k';
+  } else if (lastTx.amount >= 4999) {
+    return '1080p';
+  } else {
+    return '720p';
+  }
+}
+
 // 1. Generate Video: POST /api/videos/generate
 export async function generateVideo(req: AuthenticatedRequest, res: Response) {
   try {
@@ -21,24 +87,50 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    const { script, avatarId, voiceId, language } = req.body;
-    if (!script || !avatarId || !voiceId) {
-      return res.status(400).json({ message: 'Script, avatarId, and voiceId are required.' });
+    const {
+      script,
+      avatarId,
+      voiceId,
+      language,
+      visualPrompt,
+      duration,        // '15' | '30' | '60' | 'auto'
+      orientation,     // 'portrait' | 'landscape' | 'square'
+      style,           // style id string
+      mode,            // 'avatar' | 'product'
+      productImageUrl, // for product/talking_photo mode
+    } = req.body;
+
+    // Validate required fields based on mode
+    if (mode === 'product') {
+      if (!productImageUrl) {
+        return res.status(400).json({ message: 'Product image URL is required for Product Ad mode.' });
+      }
+      if (!script) {
+        return res.status(400).json({ message: 'Script/description is required.' });
+      }
+    } else {
+      if (!script || !avatarId || !voiceId) {
+        return res.status(400).json({ message: 'Script, avatarId, and voiceId are required.' });
+      }
     }
 
-    // Check credits balance (costs 10 credits)
+    // Check credits balance (costs 20 credits)
     const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
-    if (!dbUser || dbUser.creditsBalance < 10) {
+    if (!dbUser || dbUser.creditsBalance < 20) {
       return res.status(400).json({ message: 'Insufficient credits. Please top up your account.' });
     }
+
+    // Determine orientation and duration
+    const orientationVal = orientation || 'portrait';
+    const durationVal = parseInt(duration) || 0; // 0 = auto
 
     // Step 1: Create a PENDING Video record
     const video = await prisma.video.create({
       data: {
         userId: user.id,
-        script,
-        avatarId,
-        voiceId,
+        script: script || productImageUrl,
+        avatarId: avatarId || 'product_mode',
+        voiceId: voiceId || 'none',
         language: language || 'English',
         status: VideoStatus.PENDING,
       },
@@ -47,35 +139,73 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
     // Step 2: Deduct credits
     await prisma.user.update({
       where: { id: user.id },
-      data: { creditsBalance: { decrement: 10 } },
+      data: { creditsBalance: { decrement: 20 } },
     });
 
-    // Step 3: Trigger HeyGen API (or D-ID API)
-    // If HEYGEN_API_KEY is configured, make real request. Otherwise mock.
+    // Step 3: Determine dimension/resolution based on user plan and orientation
+    const resolution = await getUserVideoResolution(user.id);
+    const { width, height } = getDimensions(orientationVal, resolution);
+
+    console.log(`[HeyGen Render] User: ${user.id} | Mode: ${mode || 'avatar'} | Resolution: ${resolution} | Dimensions: ${width}x${height} | Duration: ${durationVal || 'auto'}s`);
+
+    // Step 4: Trigger HeyGen API
     if (HEYGEN_API_KEY) {
       try {
+        let characterInput: any;
+
+        if (mode === 'product') {
+          // Talking photo / product animation mode
+          characterInput = {
+            type: 'talking_photo',
+            talking_photo_url: productImageUrl,
+            talking_photo_style: 'stable',
+            expression: 'default',
+          };
+        } else {
+          characterInput = {
+            type: 'avatar',
+            avatar_id: avatarId,
+            avatar_style: 'normal',
+          };
+        }
+
+        const sceneInput: any = {
+          character: characterInput,
+          voice: voiceId && voiceId !== 'none' ? {
+            type: 'text',
+            input_text: script,
+            voice_id: voiceId,
+          } : {
+            type: 'silence',
+          },
+        };
+
+        // Apply visual prompt background if provided
+        if (visualPrompt && visualPrompt.trim().length > 0) {
+          const bgPrompt = `${visualPrompt.trim()}, blurred background, photorealistic portrait studio setting, soft bokeh, high resolution`;
+          const generatedBgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(bgPrompt)}?width=${width}&height=${height}&nologo=true`;
+          
+          sceneInput.background = {
+            type: 'image',
+            url: generatedBgUrl,
+          };
+          console.log(`[HeyGen Render] Applied Custom AI Background: ${generatedBgUrl}`);
+        }
+
+        // Build the request payload
+        const payload: any = {
+          video_inputs: [sceneInput],
+          dimension: { width, height },
+        };
+
+        // Apply duration if not auto
+        if (durationVal > 0) {
+          payload.duration = durationVal;
+        }
+
         const response = await axios.post(
           'https://api.heygen.com/v2/video/generate',
-          {
-            video_inputs: [
-              {
-                character: {
-                  type: 'avatar',
-                  avatar_id: avatarId,
-                  avatar_style: 'normal',
-                },
-                voice: {
-                  type: 'text',
-                  input_text: script,
-                  voice_id: voiceId,
-                },
-              },
-            ],
-            dimension: {
-              width: 1080,
-              height: 1920,
-            },
-          },
+          payload,
           {
             headers: {
               'x-api-key': HEYGEN_API_KEY,
@@ -86,7 +216,13 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
 
         const heygenVideoId = response.data?.data?.video_id;
 
-        // Update video record to PROCESSING, storing job ID in videoUrl temporarily
+        if (!heygenVideoId) {
+          throw new Error('HeyGen did not return a video_id. Response: ' + JSON.stringify(response.data));
+        }
+
+        console.log(`[HeyGen Render] Job submitted successfully. HeyGen Video ID: ${heygenVideoId}`);
+
+        // Update video record to PROCESSING
         await prisma.video.update({
           where: { id: video.id },
           data: {
@@ -95,27 +231,30 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
           },
         });
 
-        // Start background polling to check video status
+        // Start background polling
         pollHeyGenStatus(video.id, heygenVideoId);
 
       } catch (heygenErr: any) {
-        console.error('HeyGen API call failed:', heygenErr.response?.data || heygenErr.message);
+        console.error('[HeyGen API Error]:', heygenErr.response?.data || heygenErr.message);
         // Refund credits on API failure
         await prisma.$transaction([
           prisma.user.update({
             where: { id: user.id },
-            data: { creditsBalance: { increment: 10 } },
+            data: { creditsBalance: { increment: 20 } },
           }),
           prisma.video.update({
             where: { id: video.id },
             data: { status: VideoStatus.FAILED },
           }),
         ]);
-        return res.status(502).json({ message: 'AI video generation API failed. Credits refunded.' });
+        return res.status(502).json({ 
+          message: 'AI video generation API failed. Credits refunded.',
+          detail: heygenErr.response?.data?.message || heygenErr.message,
+        });
       }
     } else {
       // Mock processing for sandbox environments
-      console.log(`[Mock Generation] Starting video render for script: "${script.slice(0, 30)}..."`);
+      console.log(`[Mock Generation] Starting video render for: "${(script || productImageUrl || '').slice(0, 30)}..."`);
       await prisma.video.update({
         where: { id: video.id },
         data: { status: VideoStatus.PROCESSING },
@@ -124,7 +263,6 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       // Simulate completion in 10 seconds
       setTimeout(async () => {
         try {
-          // Mock completed video S3/Cloudinary URL
           const mockVideos = [
             'https://res.cloudinary.com/demo/video/upload/dog.mp4',
             'https://res.cloudinary.com/demo/video/upload/elephants.mp4'
@@ -153,7 +291,7 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
     return res.status(202).json({
       message: 'Video rendering task initiated successfully.',
       videoId: video.id,
-      creditsBalance: dbUser.creditsBalance - 10,
+      creditsBalance: dbUser.creditsBalance - 20,
     });
   } catch (error: any) {
     console.error('Error initiating generation:', error);
@@ -161,9 +299,9 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
   }
 }
 
-// Helper to poll HeyGen API in background (lasts up to 30 minutes)
+// Helper to poll HeyGen API in background (lasts up to 3 hours to cover long renders)
 async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
-  const maxAttempts = 90; // 90 * 20 seconds = 30 minutes
+  const maxAttempts = 540; // 540 * 20 seconds = 3 hours
   let attempts = 0;
 
   console.log(`[HeyGen Polling] Starting status polling for Video: ${dbVideoId}, Job: ${heygenVideoId}`);
@@ -171,13 +309,13 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
   const interval = setInterval(async () => {
     attempts++;
     if (attempts > maxAttempts) {
-      console.log(`[HeyGen Polling] Polling timed out (30 mins limit) for Video: ${dbVideoId}`);
+      console.log(`[HeyGen Polling] Polling timed out (3 hours limit) for Video: ${dbVideoId}`);
       clearInterval(interval);
       await prisma.video.update({
         where: { id: dbVideoId },
         data: {
           status: VideoStatus.FAILED,
-          videoUrl: null, // Clear job ID
+          videoUrl: null,
         },
       });
       return;
@@ -185,7 +323,7 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
 
     try {
       const response = await axios.get(
-        `https://api.heygen.com/v3/videos/${heygenVideoId}`,
+        `https://api.heygen.com/v1/video_status.get?video_id=${heygenVideoId}`,
         {
           headers: {
             'x-api-key': HEYGEN_API_KEY,
@@ -193,13 +331,14 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
         }
       );
 
-      const status = response.data?.data?.status;
+      const data = response.data?.data;
+      const status = data?.status;
       console.log(`[HeyGen Polling] Video: ${dbVideoId}, Attempt: ${attempts}/${maxAttempts}, Status: ${status}`);
 
       if (status === 'completed') {
         clearInterval(interval);
-        const videoUrl = response.data?.data?.video_url;
-        const thumbnailUrl = response.data?.data?.thumbnail_url;
+        const videoUrl = data?.video_url;
+        const thumbnailUrl = data?.thumbnail_url;
 
         console.log(`[HeyGen Polling] Video completed! URL: ${videoUrl}`);
 
@@ -218,7 +357,7 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
           where: { id: dbVideoId },
           data: {
             status: VideoStatus.FAILED,
-            videoUrl: null, // Clear job ID
+            videoUrl: null,
           },
         });
       }
@@ -228,7 +367,7 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
   }, 20000); // poll every 20 seconds
 }
 
-// 2. Fetch User Videos: GET /api/videos
+// 2. Fetch User Videos: GET /api/videos (Syncs processing state on-the-fly)
 export async function getVideos(req: AuthenticatedRequest, res: Response) {
   try {
     const user = req.user;
@@ -236,14 +375,96 @@ export async function getVideos(req: AuthenticatedRequest, res: Response) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    const videos = await prisma.video.findMany({
+    let videos = await prisma.video.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
     });
 
+    // On-the-fly status sync for processing videos
+    const processingVideos = videos.filter(v => v.status === VideoStatus.PROCESSING);
+    if (processingVideos.length > 0 && HEYGEN_API_KEY) {
+      let updatedAny = false;
+      for (const video of processingVideos) {
+        if (video.videoUrl && !video.videoUrl.startsWith('http')) {
+          try {
+            const response = await axios.get(
+              `https://api.heygen.com/v1/video_status.get?video_id=${video.videoUrl}`,
+              {
+                headers: {
+                  'x-api-key': HEYGEN_API_KEY,
+                },
+              }
+            );
+
+            const data = response.data?.data;
+            const status = data?.status;
+            if (status === 'completed') {
+              const liveUrl = data?.video_url;
+              const liveThumb = data?.thumbnail_url;
+              await prisma.video.update({
+                where: { id: video.id },
+                data: {
+                  status: VideoStatus.COMPLETED,
+                  videoUrl: liveUrl,
+                  thumbnailUrl: liveThumb,
+                },
+              });
+              updatedAny = true;
+              console.log(`[On-The-Fly Sync] Video ${video.id} updated to COMPLETED.`);
+            } else if (status === 'failed') {
+              await prisma.video.update({
+                where: { id: video.id },
+                data: {
+                  status: VideoStatus.FAILED,
+                  videoUrl: null,
+                },
+              });
+              updatedAny = true;
+              console.log(`[On-The-Fly Sync] Video ${video.id} updated to FAILED.`);
+            }
+          } catch (err) {
+            console.error(`[On-The-Fly Sync Error] Video: ${video.id}`, err);
+          }
+        }
+      }
+
+      if (updatedAny) {
+        videos = await prisma.video.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+    }
+
     return res.status(200).json({ videos });
   } catch (error) {
     return res.status(500).json({ message: 'Error retrieving videos' });
+  }
+}
+
+// Public endpoint for viewing shared videos
+export async function getPublicVideo(req: any, res: Response) {
+  try {
+    const { id } = req.params;
+    const video = await prisma.video.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        script: true,
+        videoUrl: true,
+        thumbnailUrl: true,
+        status: true,
+        createdAt: true,
+      }
+    });
+
+    if (!video) {
+      return res.status(404).json({ message: 'Video not found.' });
+    }
+
+    return res.status(200).json({ video });
+  } catch (err: any) {
+    return res.status(500).json({ message: err.message || 'Error fetching shared video.' });
   }
 }
 
@@ -263,11 +484,10 @@ export async function generateScript(req: AuthenticatedRequest, res: Response) {
     const audience = targetAudience || 'general consumers';
     const lang = language || 'English';
 
-    // Contextual high-converting ad script templates
     let script = '';
 
     if (lang.includes('Hindi')) {
-      script = `हे दोस्तों! क्या आप जानते हैं कि ${productName} आपके जीवन को कितना आसान बना सकता है? अगर आप ${description} से परेशान हैं, तो आज ही इसे आज़माएं। यह विशेष रूप से हमारे ${audience} के लिए बनाया गया है। अभी नीचे दिए गए बटन पर क्लिक करें और 50% की छूट का लाभ उठाएं!`;
+      script = `हे दोस्तों! क्या आप जानते हैं कि ${productName} आपके जीवन को कितना आसान बना सकता है? अगर आप ${description} से परेशान हैं, तो आज ही इसे आज़माएं। यह विशेष रूप से हमारे ${audience} के लिए बनाया गया है। अभी नीचे दिए गए बटन पर क्लिक करें और 50% की छूट का लाभ उठाएं!`;
     } else if (lang.includes('Tamil')) {
       script = `வணக்கம் நண்பர்களே! ${productName} உங்களை எப்படி மாற்றப்போகிறது என்று தெரியுமா? ${description} காரணமாக நீங்கள் கவலைப்படுகிறீர்களா? கவலை வேண்டாம்! இதோ உங்களுக்கான தீர்வு. எங்கள் ${audience}-க்காகவே இது பிரத்யேகமாக தயாரிப்பு செய்யப்பட்டுள்ளது. உடனே கீழே உள்ள லிங்கை கிளிக் செய்து ஆர்டர் செய்யுங்கள்!`;
     } else if (lang.includes('Telugu')) {
@@ -353,7 +573,20 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
   }
 }
 
-// 6. Resume active polling for unprocessed jobs (Server restart recovery)
+// 6. Get Curated Styles: GET /api/videos/styles
+export async function getStyles(req: AuthenticatedRequest, res: Response) {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    return res.status(200).json({ styles: CURATED_STYLES });
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message || 'Error fetching styles.' });
+  }
+}
+
+// 7. Resume active polling for unprocessed jobs (Server restart recovery)
 export async function resumeActivePolling() {
   try {
     const processingVideos = await prisma.video.findMany({

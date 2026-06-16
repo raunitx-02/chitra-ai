@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Play, Sparkles, LogOut, ShieldCheck, User } from 'lucide-react';
 
 export default function Navbar() {
-  const { user, logout, creditsBalance } = useAuth();
+  const { user, logout, creditsBalance, planName } = useAuth();
 
   return (
     <nav className="sticky top-0 z-50 w-full bg-[#FAFAF8]/85 backdrop-blur border-b border-black/[0.06] px-6 py-4 flex items-center justify-between">
@@ -17,6 +17,12 @@ export default function Navbar() {
       <div className="flex items-center gap-4">
         {user ? (
           <>
+            {planName && planName !== 'None' && (
+              <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase">
+                {planName}
+              </span>
+            )}
+            
             <div className="flex items-center gap-2 bg-brandGreen-light/40 border border-brandGreen/10 rounded-full px-3.5 py-1.5 text-xs font-semibold text-brandGreen-dark">
               <span>{creditsBalance} credits</span>
             </div>

@@ -5,49 +5,73 @@ import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/api';
-import { 
-  Sparkles, 
-  Play, 
-  Volume2, 
-  Send, 
-  Loader2, 
-  Video, 
-  CreditCard, 
-  AlertTriangle,
-  History,
-  CheckCircle,
-  Pause,
-  Search,
-  Filter,
-  Sliders,
-  X,
-  Check
+import {
+  Sparkles, Play, Volume2, Send, Loader2, Video, CreditCard,
+  AlertTriangle, History, CheckCircle, Pause, Search, Sliders,
+  X, Check, ChevronDown, LayoutGrid, List, Plus, Clock, Monitor,
+  Smartphone, Square, Upload, Image, Palette, Mic, User, SlidersHorizontal,
+  Paperclip, Wand2, ArrowRight, ExternalLink
 } from 'lucide-react';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
+// ─── Avatar category heuristics ───────────────────────────────────────────────
+const ANIMATED_KEYWORDS = ['cartoon', 'anime', 'animated', 'fox', 'cat', 'bear', 'rabbit', 'dog', 'animal', 'panda', 'lion', 'tiger', 'stylized', 'pixel', '3d'];
+const PROFESSIONAL_KEYWORDS = ['suit', 'business', 'office', 'corporate', 'formal', 'professional', 'executive'];
+const UGC_KEYWORDS = ['casual', 'creator', 'influencer', 'home', 'ugc', 'selfie', 'vlog'];
+const LIFESTYLE_KEYWORDS = ['lifestyle', 'outdoor', 'sport', 'active', 'health', 'wellness', 'travel'];
+
+function classifyAvatar(name: string, tags: string[] = []): string {
+  const lower = (name + ' ' + tags.join(' ')).toLowerCase();
+  if (ANIMATED_KEYWORDS.some(k => lower.includes(k))) return 'Animated';
+  if (UGC_KEYWORDS.some(k => lower.includes(k))) return 'UGC';
+  if (PROFESSIONAL_KEYWORDS.some(k => lower.includes(k))) return 'Professional';
+  if (LIFESTYLE_KEYWORDS.some(k => lower.includes(k))) return 'Lifestyle';
+  return 'Community';
+}
+
+function getCharacterKey(nameStr: string): string {
+  if (!nameStr) return '';
+  const parts = nameStr.trim().split(/\s+/);
+  if (parts.length === 0) return '';
+  const first = parts[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+  const salutations = ['dr', 'mr', 'mrs', 'ms', 'prof', 'doctor'];
+  if (salutations.includes(first) && parts.length > 1) return (parts[0] + '_' + parts[1]).toLowerCase();
+  return first;
+}
+
+// ─── Orientation config ────────────────────────────────────────────────────────
+const ORIENTATIONS = [
+  { value: 'portrait', label: '9:16 Portrait', icon: Smartphone },
+  { value: 'landscape', label: '16:9 Landscape', icon: Monitor },
+  { value: 'square', label: '1:1 Square', icon: Square },
+];
+
+const DURATIONS = [
+  { value: 'auto', label: 'Auto' },
+  { value: '15', label: '15s' },
+  { value: '30', label: '30s' },
+  { value: '60', label: '60s' },
+];
+
+const STYLE_CATEGORIES = ['All Styles', 'Retro Tech', 'Iconic Artist', 'Pop Culture', 'Print', 'Handmade', 'Cinematic'];
+const AVATAR_TABS = ['Public Avatars', 'Recently Used', 'My Avatars'] as const;
+const AVATAR_CATEGORIES = ['All', 'Professional', 'Lifestyle', 'UGC', 'Community', 'Animated', 'Favorites'] as const;
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, loading: authLoading, creditsBalance, refreshProfile } = useAuth();
   const router = useRouter();
 
-  // HeyGen API dynamic assets
+  // HeyGen API assets
   const { data: avatarsRes, error: avatarsErr } = useSWR(user ? '/videos/avatars' : null, fetcher);
   const { data: voicesRes, error: voicesErr } = useSWR(user ? '/videos/voices' : null, fetcher);
+  const { data: stylesRes } = useSWR(user ? '/videos/styles' : null, fetcher);
+  const { data: videoData, mutate } = useSWR(user ? '/videos' : null, fetcher, { refreshInterval: 5000 });
 
-  // Helper to get character base name key (e.g. "Armando" from "Armando Casual Front")
-  const getCharacterKey = (nameStr: string) => {
-    if (!nameStr) return '';
-    const parts = nameStr.trim().split(/\s+/);
-    if (parts.length === 0) return '';
-    const first = parts[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-    const salutations = ['dr', 'mr', 'mrs', 'ms', 'prof', 'doctor'];
-    if (salutations.includes(first) && parts.length > 1) {
-      return (parts[0] + '_' + parts[1]).toLowerCase();
-    }
-    return first;
-  };
+  const videos = videoData?.videos || [];
 
-  // Safely parse HeyGen responses (and group variations by character name)
+  // ── Parse raw API data ────────────────────────────────────────────────────
   const allAvatars = (() => {
     let rawList: any[] = [];
     if (avatarsRes) {
@@ -59,25 +83,22 @@ export default function Dashboard() {
         else if (d && Array.isArray(d.looks)) rawList = d.looks;
       }
     }
-    return rawList;
+    return rawList.map(av => ({
+      ...av,
+      _category: classifyAvatar(av.name || av.avatar_name || '', av.tags || []),
+    }));
   })();
 
   const avatars = (() => {
-    const seenCharacters = new Set();
+    const seenChars = new Set<string>();
     return allAvatars.filter((av: any) => {
       const avName = av.name || av.avatar_name || '';
       if (!avName) return false;
-
-      // Skip side/sitting/back views to keep it professional and front-facing by default
       const lowerName = avName.toLowerCase();
-      if (lowerName.includes('side') || lowerName.includes('sitting') || lowerName.includes('back')) {
-        return false;
-      }
-
+      if (lowerName.includes('side') || lowerName.includes('back')) return false;
       const charKey = getCharacterKey(avName);
-      if (!charKey || seenCharacters.has(charKey)) return false;
-
-      seenCharacters.add(charKey);
+      if (!charKey || seenChars.has(charKey)) return false;
+      seenChars.add(charKey);
       return true;
     });
   })();
@@ -92,7 +113,7 @@ export default function Dashboard() {
         else if (d && Array.isArray(d.voices)) rawList = d.voices;
       }
     }
-    const seen = new Set();
+    const seen = new Set<string>();
     return rawList.filter((v: any) => {
       if (!v.voice_id || seen.has(v.voice_id)) return false;
       seen.add(v.voice_id);
@@ -100,40 +121,66 @@ export default function Dashboard() {
     });
   })();
 
-  const [selectedAvatarId, setSelectedAvatarId] = useState<string>('');
+  const styles = stylesRes?.styles || [];
+
+  // ── Selection states ──────────────────────────────────────────────────────
+  const [selectedAvatarId, setSelectedAvatarId] = useState('');
   const [hoveredAvatarId, setHoveredAvatarId] = useState<string | null>(null);
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>('');
+  const [selectedVoiceId, setSelectedVoiceId] = useState('');
   const [voicePreviewPlaying, setVoicePreviewPlaying] = useState<string | null>(null);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState<any>(null);
 
-  // Search/Filters
+  // ── Basics bar ────────────────────────────────────────────────────────────
+  const [duration, setDuration] = useState('auto');
+  const [orientation, setOrientation] = useState('portrait');
+  const [seedance, setSeedance] = useState(false);
+
+  // ── Mode: avatar | product ────────────────────────────────────────────────
+  const [mode, setMode] = useState<'avatar' | 'product'>('avatar');
+  const [productImageUrl, setProductImageUrl] = useState('');
+  const [productImagePreview, setProductImagePreview] = useState('');
+
+  // ── Script / prompts ──────────────────────────────────────────────────────
+  const [script, setScript] = useState('');
+  const [visualPrompt, setVisualPrompt] = useState('');
+  const [instructions, setInstructions] = useState('');
+
+  // ── Search / filter ───────────────────────────────────────────────────────
   const [avatarSearch, setAvatarSearch] = useState('');
-  const [avatarGender, setAvatarGender] = useState('all');
-
+  const [avatarCategory, setAvatarCategory] = useState<string>('All');
+  const [avatarTab, setAvatarTab] = useState<typeof AVATAR_TABS[number]>('Public Avatars');
+  const [avatarViewMode, setAvatarViewMode] = useState<'grid' | 'list'>('grid');
   const [voiceSearch, setVoiceSearch] = useState('');
   const [voiceGender, setVoiceGender] = useState('all');
   const [voiceLanguage, setVoiceLanguage] = useState('all');
-
-  // Limits for pagination rendering to prevent DOM lag
+  const [styleCategory, setStyleCategory] = useState('All Styles');
   const [avatarLimit, setAvatarLimit] = useState(24);
   const [voiceLimit, setVoiceLimit] = useState(24);
 
-  const [script, setScript] = useState('');
-  const [visualPrompt, setVisualPrompt] = useState('');
+  // ── Modals ────────────────────────────────────────────────────────────────
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [showStyleModal, setShowStyleModal] = useState(false);
+  const [showInstructionsModal, setShowInstructionsModal] = useState(false);
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [showAiWriter, setShowAiWriter] = useState(false);
   const [showProcessingModal, setShowProcessingModal] = useState(false);
   const [modalStage, setModalStage] = useState(0);
 
+  // ── Loading / error ───────────────────────────────────────────────────────
   const [rendering, setRendering] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [error, setError] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // AI Scriptwriter States
+  // ── AI Scriptwriter ───────────────────────────────────────────────────────
   const [productName, setProductName] = useState('');
   const [productDesc, setProductDesc] = useState('');
   const [targetAudience, setTargetAudience] = useState('');
   const [aiWriting, setAiWriting] = useState(false);
-  const [showAiWriter, setShowAiWriter] = useState(false);
 
+  // ── Derived data ──────────────────────────────────────────────────────────
   const selectedAvatarObj = allAvatars.find((av: any) => (av.id || av.avatar_id) === selectedAvatarId);
   const selectedCharKey = selectedAvatarObj ? getCharacterKey(selectedAvatarObj.name || selectedAvatarObj.avatar_name || '') : '';
   const availableLooks = allAvatars.filter((av: any) => {
@@ -141,14 +188,13 @@ export default function Dashboard() {
     return getCharacterKey(avName) === selectedCharKey;
   });
 
-  const uniqueLanguages = Array.from(new Set(voices.map((v: any) => v.language))).filter(Boolean).sort();
+  const uniqueLanguages = Array.from(new Set(voices.map((v: any) => v.language))).filter(Boolean).sort() as string[];
 
   const filteredAvatars = avatars.filter((av: any) => {
-    const targetId = av.id || av.avatar_id || '';
-    const targetName = av.name || av.avatar_name || '';
-    const nameMatch = targetName.toLowerCase().includes(avatarSearch.toLowerCase()) || targetId.toLowerCase().includes(avatarSearch.toLowerCase());
-    const genderMatch = avatarGender === 'all' || av.gender?.toLowerCase() === avatarGender.toLowerCase();
-    return nameMatch && genderMatch;
+    const avName = av.name || av.avatar_name || '';
+    const nameMatch = avName.toLowerCase().includes(avatarSearch.toLowerCase());
+    const catMatch = avatarCategory === 'All' || av._category === avatarCategory;
+    return nameMatch && catMatch;
   });
 
   const filteredVoices = voices.filter((v: any) => {
@@ -158,60 +204,42 @@ export default function Dashboard() {
     return nameMatch && genderMatch && langMatch;
   });
 
+  const filteredStyles = styles.filter((s: any) =>
+    styleCategory === 'All Styles' || s.category === styleCategory
+  );
+
   const visibleAvatars = filteredAvatars.slice(0, avatarLimit);
   const visibleVoices = filteredVoices.slice(0, voiceLimit);
 
-  // Sync selected avatar if not in filtered list
+  // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (filteredAvatars.length > 0) {
-      const selectedAvatarObj = allAvatars.find((av: any) => (av.id || av.avatar_id) === selectedAvatarId);
-      const selectedCharKey = selectedAvatarObj ? getCharacterKey(selectedAvatarObj.name || selectedAvatarObj.avatar_name || '') : '';
-      const isCharKeySelected = filteredAvatars.some((av: any) => getCharacterKey(av.name || av.avatar_name || '') === selectedCharKey);
-      if (!isCharKeySelected) {
-        setSelectedAvatarId(filteredAvatars[0].id || filteredAvatars[0].avatar_id);
-      }
-    } else if (avatars.length > 0 && !selectedAvatarId) {
-      setSelectedAvatarId(avatars[0].id || avatars[0].avatar_id);
+    if (!authLoading && !user) router.push('/login');
+  }, [user, authLoading]);
+
+  useEffect(() => {
+    if (filteredAvatars.length > 0 && !selectedAvatarId) {
+      setSelectedAvatarId(filteredAvatars[0].id || filteredAvatars[0].avatar_id);
     }
-  }, [filteredAvatars, selectedAvatarId, avatars, allAvatars]);
+  }, [filteredAvatars.length]);
 
-  // Sync selected voice if not in filtered list
   useEffect(() => {
-    if (filteredVoices.length > 0) {
-      const isSelectedInFiltered = filteredVoices.some((v: any) => v.voice_id === selectedVoiceId);
-      if (!isSelectedInFiltered) {
-        setSelectedVoiceId(filteredVoices[0].voice_id);
-      }
-    } else if (voices.length > 0 && !selectedVoiceId) {
-      setSelectedVoiceId(voices[0].voice_id);
+    if (filteredVoices.length > 0 && !selectedVoiceId) {
+      setSelectedVoiceId(filteredVoices[0].voice_id);
     }
-  }, [filteredVoices, selectedVoiceId, voices]);
+  }, [filteredVoices.length]);
 
-  // Reset limits when filters change
-  useEffect(() => {
-    setAvatarLimit(24);
-  }, [avatarSearch, avatarGender]);
+  useEffect(() => { setAvatarLimit(24); }, [avatarSearch, avatarCategory]);
+  useEffect(() => { setVoiceLimit(24); }, [voiceSearch, voiceGender, voiceLanguage]);
 
   useEffect(() => {
-    setVoiceLimit(24);
-  }, [voiceSearch, voiceGender, voiceLanguage]);
-
-  useEffect(() => {
-    return () => {
-      if (voiceAudioRef.current) {
-        voiceAudioRef.current.pause();
-      }
-    };
+    return () => { if (voiceAudioRef.current) voiceAudioRef.current.pause(); };
   }, []);
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const playVoicePreview = (voiceId: string, url: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!url) return;
-
-    if (voiceAudioRef.current) {
-      voiceAudioRef.current.pause();
-    }
-
+    if (voiceAudioRef.current) voiceAudioRef.current.pause();
     if (voicePreviewPlaying === voiceId) {
       setVoicePreviewPlaying(null);
       voiceAudioRef.current = null;
@@ -219,17 +247,10 @@ export default function Dashboard() {
       setVoicePreviewPlaying(voiceId);
       const audio = new Audio(url);
       voiceAudioRef.current = audio;
-      audio.play().catch(err => {
-        console.error('Audio playback blocked:', err);
-        setVoicePreviewPlaying(null);
-      });
-      audio.onended = () => {
-        setVoicePreviewPlaying(null);
-        voiceAudioRef.current = null;
-      };
+      audio.play().catch(() => setVoicePreviewPlaying(null));
+      audio.onended = () => { setVoicePreviewPlaying(null); voiceAudioRef.current = null; };
     }
   };
-
 
   const handleGenerateScript = async () => {
     if (!productName.trim() || !productDesc.trim()) return;
@@ -238,9 +259,7 @@ export default function Dashboard() {
     try {
       const activeVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
       const res = await api.post('/videos/generate-script', {
-        productName,
-        description: productDesc,
-        targetAudience,
+        productName, description: productDesc, targetAudience,
         language: activeVoice ? activeVoice.language : 'English',
       });
       setScript(res.data.script);
@@ -252,19 +271,6 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading]);
-
-  // Fetch past videos using SWR
-  const { data: videoData, mutate } = useSWR(user ? '/videos' : null, fetcher, {
-    refreshInterval: 5000, // poll status every 5 seconds
-  });
-
-  const videos = videoData?.videos || [];
-
   const modalStages = [
     { title: "Analyzing UGC script prompt...", description: "Structuring the copy and parsing emotional prompts" },
     { title: "Choosing character look & outfits...", description: "Selecting clothes and visual settings matching your selection" },
@@ -275,41 +281,38 @@ export default function Dashboard() {
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!script.trim()) return;
-    if (creditsBalance < 10) {
-      setError('Insufficient credits. Please top up.');
-      return;
-    }
+    const effectiveScript = script.trim();
+    if (!effectiveScript) { setError('Please enter a script or description.'); return; }
+    if (mode === 'avatar' && !selectedAvatarId) { setError('Please select an avatar.'); return; }
+    if (mode === 'product' && !productImageUrl.trim()) { setError('Please enter a product image URL.'); return; }
+    if (creditsBalance < 10) { setError('Insufficient credits. Please top up.'); return; }
 
-    setRendering(true);
-    setError('');
-    setShowProcessingModal(true);
-    setModalStage(0);
+    setRendering(true); setError('');
+    setShowProcessingModal(true); setModalStage(0);
 
     const stageInterval = setInterval(() => {
-      setModalStage((prev) => (prev + 1) % modalStages.length);
+      setModalStage(prev => (prev + 1) % modalStages.length);
     }, 3000);
 
     try {
       const activeVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
       await api.post('/videos/generate', {
-        script,
-        avatarId: selectedAvatarId,
-        voiceId: selectedVoiceId,
+        script: effectiveScript,
+        avatarId: mode === 'avatar' ? selectedAvatarId : undefined,
+        voiceId: mode === 'avatar' ? selectedVoiceId : undefined,
         language: activeVoice ? activeVoice.language : 'English',
+        visualPrompt,
+        duration,
+        orientation,
+        style: selectedStyle?.id,
+        mode,
+        productImageUrl: mode === 'product' ? productImageUrl : undefined,
       });
-      setScript('');
-      setVisualPrompt('');
-      mutate();
-      await refreshProfile();
-
-      // Go to success screen (represented by index 5)
+      setScript(''); setVisualPrompt(''); setProductImageUrl(''); setProductImagePreview('');
+      mutate(); await refreshProfile();
       clearInterval(stageInterval);
       setModalStage(5);
-      setTimeout(() => {
-        setShowProcessingModal(false);
-      }, 3500);
-
+      setTimeout(() => setShowProcessingModal(false), 3500);
     } catch (err: any) {
       clearInterval(stageInterval);
       setShowProcessingModal(false);
@@ -319,39 +322,49 @@ export default function Dashboard() {
     }
   };
 
-  // Top up credits checkout flow
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
+  const handleShare = (videoId: string) => {
+    const shareUrl = `${window.location.origin}/video/${videoId}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopiedId(videoId);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(() => alert('Failed to copy link.'));
   };
 
-  const handleTopup = async (plan: 'BASIC' | 'PRO') => {
-    setBillingLoading(true);
-    setError('');
+  const handleDownload = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl; link.download = filename;
+      document.body.appendChild(link); link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch { window.open(url, '_blank'); }
+  };
 
+  const loadRazorpayScript = () => new Promise(resolve => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+
+  const handleTopup = async (plan: 'BASIC' | 'PRO') => {
+    setBillingLoading(true); setError('');
     try {
       const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        throw new Error('Razorpay SDK failed to load.');
-      }
-
+      if (!scriptLoaded) throw new Error('Razorpay SDK failed to load.');
       const res = await api.post('/payments/order', { plan });
       const { orderId, amount, currency, keyId } = res.data;
-
       const options = {
-        key: keyId,
-        amount,
-        currency,
+        key: keyId, amount, currency,
         name: 'RetailStacker AI Credits',
         description: `Purchase ${plan} package`,
         order_id: orderId,
-        handler: async function (response: any) {
+        handler: async (response: any) => {
           try {
             await api.post('/payments/verify', {
               razorpay_order_id: response.razorpay_order_id,
@@ -360,25 +373,16 @@ export default function Dashboard() {
             });
             alert('Top-up completed successfully!');
             await refreshProfile();
-          } catch (verifyErr: any) {
-            alert('Payment verification failed.');
-          }
+          } catch { alert('Payment verification failed.'); }
         },
-        prefill: {
-          email: user?.email || '',
-        },
-        theme: {
-          color: '#0A3A1E',
-        },
+        prefill: { email: user?.email || '' },
+        theme: { color: '#0A3A1E' },
       };
-
       const rzp = new (window as any).Razorpay(options);
       rzp.open();
     } catch (err: any) {
       setError(err.message || 'Billing initialization failed.');
-    } finally {
-      setBillingLoading(false);
-    }
+    } finally { setBillingLoading(false); }
   };
 
   if (authLoading) {
@@ -389,328 +393,286 @@ export default function Dashboard() {
     );
   }
 
+  const OrientationIcon = ORIENTATIONS.find(o => o.value === orientation)?.icon || Smartphone;
+
+  // ── Shared modal backdrop ─────────────────────────────────────────────────
+  const ModalBackdrop = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {children}
+    </div>
+  );
+
+  // ────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-3 gap-8">
-      {/* Left Columns: Editor Panel */}
-      <div className="lg:col-span-2 flex flex-col gap-6">
-        <div className="bg-white border border-black/5 rounded-3xl p-6 shadow-xl shadow-brandGreen-dark/5 flex flex-col gap-6">
-          <div>
-            <h2 className="text-xl font-bold text-brandGreen-dark flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-brandGreen" />
-              <span>Studio Workshop</span>
-            </h2>
-            <p className="text-xs text-gray-400 mt-1">Configure your avatar and enter your script draft below.</p>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+      {/* ─── Left: Studio Panel ─────────────────────────────────────────────── */}
+      <div className="lg:col-span-2 flex flex-col gap-5">
+        <div className="bg-white border border-black/5 rounded-3xl shadow-xl shadow-brandGreen-dark/5 overflow-hidden">
+
+          {/* Studio Header */}
+          <div className="px-6 pt-6 pb-4 border-b border-black/5 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-brandGreen-dark flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-brandGreen" />
+                <span>UGC Ad Studio</span>
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">Create avatar videos, product ads, and animated UGC content.</p>
+            </div>
+            {/* Mode toggle */}
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              <button
+                onClick={() => setMode('avatar')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${mode === 'avatar' ? 'bg-white text-brandGreen-dark shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+              >
+                <User className="w-3.5 h-3.5" /> Avatar
+              </button>
+              <button
+                onClick={() => setMode('product')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${mode === 'product' ? 'bg-white text-brandGreen-dark shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+              >
+                <Image className="w-3.5 h-3.5" /> Product Ad
+              </button>
+            </div>
+          </div>
+
+          {/* ── Basics Bar ──────────────────────────────────────────────────── */}
+          <div className="px-6 py-3 bg-gray-50/60 border-b border-black/5 flex flex-wrap items-center gap-3">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Basics</span>
+
+            {/* Duration */}
+            <div className="relative">
+              <select
+                value={duration}
+                onChange={e => setDuration(e.target.value)}
+                className="appearance-none pl-7 pr-6 py-1.5 bg-white border border-black/8 rounded-xl text-xs font-semibold text-brandGreen-dark focus:outline-none focus:border-brandGreen cursor-pointer shadow-sm"
+              >
+                {DURATIONS.map(d => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
+              <Clock className="w-3.5 h-3.5 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Orientation */}
+            <div className="relative">
+              <select
+                value={orientation}
+                onChange={e => setOrientation(e.target.value)}
+                className="appearance-none pl-7 pr-6 py-1.5 bg-white border border-black/8 rounded-xl text-xs font-semibold text-brandGreen-dark focus:outline-none focus:border-brandGreen cursor-pointer shadow-sm"
+              >
+                {ORIENTATIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <OrientationIcon className="w-3.5 h-3.5 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-gray-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Seedance toggle */}
+            <button
+              onClick={() => setSeedance(!seedance)}
+              className={`flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl text-xs font-semibold border transition shadow-sm ${seedance ? 'bg-brandGreen/10 border-brandGreen/30 text-brandGreen-dark' : 'bg-white border-black/8 text-gray-500'}`}
+            >
+              Seedance
+              <span className={`w-7 h-4 rounded-full transition-colors relative inline-block ${seedance ? 'bg-brandGreen' : 'bg-gray-200'}`}>
+                <span className={`w-3 h-3 rounded-full bg-white shadow absolute top-0.5 transition-all ${seedance ? 'left-3.5' : 'left-0.5'}`} />
+              </span>
+            </button>
+
+            {/* Style badge if selected */}
+            {selectedStyle && (
+              <button
+                onClick={() => setShowStyleModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-xl text-xs font-semibold text-purple-700 hover:bg-purple-100 transition"
+              >
+                <Palette className="w-3.5 h-3.5" />
+                {selectedStyle.name}
+                <X className="w-3 h-3 opacity-60" onClick={e => { e.stopPropagation(); setSelectedStyle(null); }} />
+              </button>
+            )}
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-600 text-xs p-3.5 rounded-xl flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" />
+            <div className="mx-6 mt-4 bg-red-500/10 border border-red-500/30 text-red-600 text-xs p-3.5 rounded-xl flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleGenerate} className="flex flex-col gap-6">
-            {/* Avatar picker */}
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/5 pb-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">1. Select Presenter Model</span>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search presenters..."
-                      value={avatarSearch}
-                      onChange={(e) => setAvatarSearch(e.target.value)}
-                      className="pl-8 pr-3 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen max-w-[150px] sm:max-w-xs"
-                    />
-                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                  <select
-                    value={avatarGender}
-                    onChange={(e) => setAvatarGender(e.target.value)}
-                    className="px-2 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen"
-                  >
-                    <option value="all">All Genders</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                  </select>
-                </div>
-              </div>
+          <form onSubmit={handleGenerate} className="flex flex-col gap-0">
 
-              {avatarsErr && <div className="text-xs text-red-500 bg-red-50 p-3 rounded-xl">Failed to load presenter models from HeyGen.</div>}
-              {!avatarsRes && !avatarsErr ? (
-                <div className="flex items-center gap-2 text-xs text-gray-400 py-6 justify-center bg-gray-50/50 rounded-2xl border border-dashed border-black/5">
-                  <Loader2 className="w-4 h-4 animate-spin text-brandGreen" />
-                  <span>Loading presenter avatars...</span>
+            {/* ── AVATAR MODE: Avatar picker ─────────────────────────────── */}
+            {mode === 'avatar' && (
+              <div className="px-6 pt-5 pb-4">
+                {/* Selected avatar preview + change button */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-brandGreen" /> Avatar
+                    {selectedAvatarObj && (
+                      <span className="text-gray-300 font-normal">—</span>
+                    )}
+                    {selectedAvatarObj && (
+                      <span className="text-brandGreen-dark normal-case font-semibold">
+                        {(selectedAvatarObj.name || selectedAvatarObj.avatar_name || '').split(' ')[0]}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAvatarModal(true)}
+                    className="text-xs font-bold text-brandGreen border border-brandGreen/30 bg-brandGreen/5 hover:bg-brandGreen/10 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Change Avatar
+                  </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-[340px] overflow-y-auto pr-1">
-                  {visibleAvatars.length > 0 ? (
-                    <>
-                      {visibleAvatars.map((av: any) => {
-                        const avId = av.id || av.avatar_id;
-                        const avName = av.name || av.avatar_name || "Unnamed";
-                        const isSelected = selectedCharKey === getCharacterKey(avName);
+
+                {/* Selected avatar card */}
+                {selectedAvatarObj ? (
+                  <div className="flex items-center gap-4 bg-gray-50 border border-black/5 rounded-2xl p-3">
+                    <div className="w-16 h-20 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 border border-black/5">
+                      {selectedAvatarObj.preview_image_url ? (
+                        <img src={selectedAvatarObj.preview_image_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center"><User className="w-6 h-6 text-gray-300" /></div>
+                      )}
+                    </div>
+                    <div className="flex-grow min-w-0">
+                      <h4 className="font-bold text-sm text-brandGreen-dark truncate">{selectedAvatarObj.name || selectedAvatarObj.avatar_name}</h4>
+                      <span className="text-[10px] text-gray-400 capitalize block mt-0.5">{selectedAvatarObj.gender || 'neutral'} · {selectedAvatarObj._category}</span>
+                      {availableLooks.length > 1 && (
+                        <p className="text-[10px] text-brandGreen font-semibold mt-1">{availableLooks.length} looks available</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAvatarModal(true)}
+                      className="p-2 rounded-xl bg-white border border-black/5 hover:bg-gray-50 text-gray-400 transition flex-shrink-0"
+                      title="Change avatar"
+                    >
+                      <SlidersHorizontal className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowAvatarModal(true)}
+                    className="w-full h-24 border-2 border-dashed border-black/10 hover:border-brandGreen/40 rounded-2xl flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-brandGreen-dark transition bg-gray-50/50 hover:bg-brandGreen/5"
+                  >
+                    <User className="w-6 h-6" />
+                    <span className="text-xs font-semibold">Select an Avatar</span>
+                  </button>
+                )}
+
+                {/* Costume / look selector for selected character */}
+                {availableLooks.length > 1 && (
+                  <div className="flex flex-col gap-2 mt-3 bg-gray-50/50 border border-black/5 rounded-2xl p-3">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <Sliders className="w-3 h-3 text-brandGreen" /> Costume & Look
+                    </span>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-[120px] overflow-y-auto pr-1">
+                      {availableLooks.map((look: any) => {
+                        const lookId = look.id || look.avatar_id;
+                        const lookName = (look.name || look.avatar_name || 'Default Look')
+                          .replace(new RegExp(`^${(selectedAvatarObj?.name || '').split(' ')[0]}`, 'i'), '').replace(/^(in\s+)/i, '').trim() || 'Default';
+                        const isSelected = selectedAvatarId === lookId;
                         return (
                           <div
+                            key={lookId}
                             role="button"
-                            key={avId}
-                            onClick={() => setSelectedAvatarId(avId)}
-                            onMouseEnter={() => setHoveredAvatarId(avId)}
-                            onMouseLeave={() => setHoveredAvatarId(null)}
-                            className={`rounded-2xl border transition-all text-left flex flex-col relative overflow-hidden cursor-pointer h-[190px] min-h-[190px] w-full group ${
-                              isSelected
-                                ? 'border-brandGreen bg-brandGreen-light/10 shadow-md shadow-brandGreen/5'
-                                : 'border-black/5 bg-gray-50/50 hover:bg-gray-50 hover:scale-[1.01]'
-                            }`}
+                            onClick={() => setSelectedAvatarId(lookId)}
+                            className={`rounded-xl border p-1.5 flex flex-col items-center gap-1 cursor-pointer transition text-center ${isSelected ? 'border-brandGreen bg-brandGreen/5 ring-1 ring-brandGreen/20' : 'border-black/5 bg-white hover:bg-gray-50'}`}
                           >
-                            {/* Full-bleed thumbnail image/video preview */}
-                            <div className="w-full h-[130px] overflow-hidden bg-gray-100 flex items-center justify-center relative border-b border-black/5">
-                              {hoveredAvatarId === avId && av.preview_video_url ? (
-                                <video
-                                  src={av.preview_video_url}
-                                  autoPlay
-                                  muted
-                                  loop
-                                  playsInline
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : av.preview_image_url ? (
-                                <img src={av.preview_image_url} alt={avName} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer" />
+                            <div className="w-full aspect-square rounded-lg overflow-hidden bg-gray-100">
+                              {look.preview_image_url ? (
+                                <img src={look.preview_image_url} alt={lookName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                               ) : (
-                                <Video className="w-6 h-6 text-gray-300" />
+                                <div className="w-full h-full flex items-center justify-center"><User className="w-3 h-3 text-gray-300" /></div>
                               )}
                             </div>
-                            {/* Presenter Name and info */}
-                            <div className="p-2.5 flex flex-col justify-center flex-grow min-w-0 bg-white">
-                              <h4 className="font-bold text-xs text-brandGreen-dark truncate">{avName}</h4>
-                              <span className="text-[9px] text-gray-400 block mt-0.5 capitalize">{av.gender || "neutral"}</span>
-                            </div>
-                            {isSelected && (
-                              <span className="absolute top-2.5 right-2.5 h-2.5 w-2.5 rounded-full bg-brandGreen border border-white shadow-sm" />
-                            )}
+                            <span className="text-[8px] font-semibold text-gray-500 truncate w-full">{lookName}</span>
                           </div>
                         );
                       })}
-                      {filteredAvatars.length > avatarLimit && (
-                        <div
-                          role="button"
-                          onClick={() => setAvatarLimit(prev => prev + 24)}
-                          className="col-span-full py-2.5 bg-gray-50 border border-dashed border-black/10 hover:bg-gray-100 hover:border-brandGreen/30 rounded-xl text-xs font-bold text-brandGreen-dark text-center transition cursor-pointer mt-1"
-                        >
-                          Load More Presenters (+{filteredAvatars.length - avatarLimit} more)
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="col-span-full py-8 text-center text-xs text-gray-400">No presenter models match your search.</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── PRODUCT MODE: Image upload ─────────────────────────────── */}
+            {mode === 'product' && (
+              <div className="px-6 pt-5 pb-4">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                  <Image className="w-3.5 h-3.5 text-brandGreen" /> Product Image
+                </span>
+                <div className="flex flex-col gap-3">
+                  <input
+                    type="url"
+                    value={productImageUrl}
+                    onChange={e => { setProductImageUrl(e.target.value); setProductImagePreview(e.target.value); }}
+                    placeholder="Paste your product image URL (e.g. https://yoursite.com/product.jpg)"
+                    className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition"
+                  />
+                  {productImagePreview && (
+                    <div className="relative w-32 h-32 rounded-2xl overflow-hidden border border-black/5 bg-gray-100">
+                      <img
+                        src={productImagePreview}
+                        alt="Product preview"
+                        className="w-full h-full object-contain p-2"
+                        onError={() => setProductImagePreview('')}
+                      />
+                    </div>
                   )}
-                </div>
-              )}
-
-              {/* Costume / Background look selector for selected character face */}
-              {availableLooks.length > 1 && (
-                <div className="flex flex-col gap-3 mt-2 bg-gray-50/50 border border-black/5 rounded-2xl p-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-brandGreen" />
-                    <span>Costume & Setting/Background ({availableLooks.length} looks available for {selectedAvatarObj?.name?.split(/\s+/)[0] || 'character'})</span>
-                  </span>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[200px] overflow-y-auto pr-1">
-                    {availableLooks.map((look: any) => {
-                      const lookId = look.id || look.avatar_id;
-                      const lookName = look.name || look.avatar_name || 'Default';
-                      // Clean lookName to remove the prefix character name (e.g. "Annie in Pink Suit" -> "Pink Suit")
-                      const charFirstName = selectedAvatarObj?.name?.split(/\s+/)[0] || '';
-                      let displayName = lookName;
-                      if (charFirstName) {
-                        displayName = displayName.replace(new RegExp(`^${charFirstName}`, 'i'), '').trim();
-                      }
-                      // Clean any leftover "in " at the beginning
-                      displayName = displayName.replace(/^(in\s+)/i, '').trim();
-                      displayName = displayName || 'Default Look';
-
-                      const isLookSelected = selectedAvatarId === lookId;
-                      return (
-                        <div
-                          role="button"
-                          key={lookId}
-                          onClick={() => setSelectedAvatarId(lookId)}
-                          className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition cursor-pointer text-xs ${
-                            isLookSelected
-                              ? 'border-brandGreen bg-brandGreen/5 text-brandGreen-dark font-bold ring-1 ring-brandGreen/20 shadow-sm'
-                              : 'border-black/5 bg-white hover:bg-gray-50 text-gray-600'
-                          }`}
-                        >
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-black/5">
-                            {look.preview_image_url ? (
-                              <img src={look.preview_image_url} alt={displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              <Video className="w-4 h-4 text-gray-300 m-auto" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-grow">
-                            <p className="truncate capitalize font-bold text-[11px] leading-tight text-brandGreen-dark">{displayName}</p>
-                            <span className="text-[8px] text-gray-400 block mt-0.5 truncate">Outfits & Scene</span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-700 leading-relaxed">
+                    <strong>How it works:</strong> The AI will animate your product image into a short talking ad. Add a script below with the product pitch text, and the AI character will speak it while displaying your product.
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Language voice picker */}
-            <div className="flex flex-col gap-3 mt-2">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/5 pb-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">2. Regional Voice Output</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search voice presets..."
-                      value={voiceSearch}
-                      onChange={(e) => setVoiceSearch(e.target.value)}
-                      className="pl-8 pr-3 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen max-w-[130px] sm:max-w-xs"
-                    />
-                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                  <select
-                    value={voiceLanguage}
-                    onChange={(e) => setVoiceLanguage(e.target.value)}
-                    className="px-2 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen max-w-[110px]"
-                  >
-                    <option value="all">All Languages</option>
-                    {uniqueLanguages.map((lang: any) => (
-                      <option key={lang} value={lang}>{lang}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={voiceGender}
-                    onChange={(e) => setVoiceGender(e.target.value)}
-                    className="px-2 py-1.5 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen"
-                  >
-                    <option value="all">All Genders</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                  </select>
                 </div>
               </div>
+            )}
 
-              {voicesErr && <div className="text-xs text-red-500 bg-red-50 p-3 rounded-xl">Failed to load voice presets from HeyGen.</div>}
-              {!voicesRes && !voicesErr ? (
-                <div className="flex items-center gap-2 text-xs text-gray-400 py-6 justify-center bg-gray-50/50 rounded-2xl border border-dashed border-black/5">
-                  <Loader2 className="w-4 h-4 animate-spin text-brandGreen" />
-                  <span>Loading voice synthesizers...</span>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[340px] overflow-y-auto pr-1">
-                  {visibleVoices.length > 0 ? (
-                    <>
-                      {visibleVoices.map((v: any) => {
-                        const audioUrl = v.preview_audio || v.preview_audio_url;
-                        return (
-                          <div
-                            role="button"
-                            key={v.voice_id}
-                            onClick={() => setSelectedVoiceId(v.voice_id)}
-                            className={`p-4 rounded-2xl border text-left flex items-center justify-between text-xs transition relative overflow-hidden cursor-pointer min-h-[72px] ${
-                              selectedVoiceId === v.voice_id
-                                ? 'border-brandGreen bg-brandGreen-light/20 text-brandGreen-dark font-bold shadow-md shadow-brandGreen/5'
-                                : 'border-black/5 text-gray-600 bg-gray-50/50 hover:bg-gray-50'
-                            }`}
-                          >
-                            <div className="min-w-0 flex-grow pr-3">
-                              <div className="font-bold text-brandGreen-dark flex items-center gap-1.5 flex-wrap">
-                                <span className="truncate">{v.name}</span>
-                                <span className="text-[8px] font-semibold px-2 py-0.5 bg-black/5 text-gray-500 rounded-full capitalize flex-shrink-0">{v.gender}</span>
-                              </div>
-                              <span className="text-[10px] text-gray-400 block mt-1.5 truncate">{v.language}</span>
-                            </div>
-                            {audioUrl && (
-                              <button
-                                type="button"
-                                onClick={(e) => playVoicePreview(v.voice_id, audioUrl, e)}
-                                className="p-2 rounded-full hover:bg-black/5 text-brandGreen transition flex-shrink-0"
-                              >
-                                {voicePreviewPlaying === v.voice_id ? (
-                                  <Pause className="w-4 h-4 fill-brandGreen animate-pulse" />
-                                ) : (
-                                  <Volume2 className="w-4 h-4" />
-                                )}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {filteredVoices.length > voiceLimit && (
-                        <div
-                          role="button"
-                          onClick={() => setVoiceLimit(prev => prev + 24)}
-                          className="col-span-full py-2 bg-gray-50 border border-dashed border-black/10 hover:bg-gray-100 hover:border-brandGreen/30 rounded-xl text-xs font-bold text-brandGreen-dark text-center transition cursor-pointer mt-1"
-                        >
-                          Load More Voices (+{filteredVoices.length - voiceLimit} more)
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="col-span-full py-8 text-center text-xs text-gray-400">No voice presets match your criteria.</div>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Divider */}
+            <div className="border-t border-black/5 mx-6" />
 
-            {/* Script input */}
-            <div className="flex flex-col gap-2">
+            {/* ── Script area ───────────────────────────────────────────── */}
+            <div className="px-6 pt-5 pb-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">3. Video Script</label>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Mic className="w-3.5 h-3.5 text-brandGreen" />
+                  Script
+                </label>
                 <button
                   type="button"
                   onClick={() => setShowAiWriter(!showAiWriter)}
                   className="text-xs font-bold text-brandGreen hover:underline flex items-center gap-1"
                 >
-                  <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-                  <span>{showAiWriter ? "Close AI Writer" : "Write script with AI"}</span>
+                  <Wand2 className="w-3.5 h-3.5 animate-pulse" />
+                  <span>{showAiWriter ? 'Close Writer' : '✦ Script Writer'}</span>
                 </button>
               </div>
 
               {showAiWriter && (
-                <div className="bg-brandGreen-light/20 border border-brandGreen/10 rounded-2xl p-4 flex flex-col gap-3">
+                <div className="bg-gradient-to-br from-brandGreen/5 to-emerald-50 border border-brandGreen/15 rounded-2xl p-4 flex flex-col gap-3">
                   <h4 className="text-xs font-bold text-brandGreen-dark flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-brandGreen" />
-                    <span>AI Scriptwriter Assistant</span>
+                    <Sparkles className="w-3.5 h-3.5 text-brandGreen" /> AI Scriptwriter Assistant
                   </h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-bold text-gray-400">Product Name</span>
-                      <input
-                        type="text"
-                        value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
-                        placeholder="e.g. RetailStacker AI"
-                        className="bg-white border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none"
-                      />
+                      <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="e.g. RetailStacker AI" className="bg-white border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen" />
                     </div>
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-bold text-gray-400">Target Audience</span>
-                      <input
-                        type="text"
-                        value={targetAudience}
-                        onChange={(e) => setTargetAudience(e.target.value)}
-                        placeholder="e.g. D2C brands, creators"
-                        className="bg-white border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none"
-                      />
+                      <input type="text" value={targetAudience} onChange={e => setTargetAudience(e.target.value)} placeholder="e.g. D2C brands, creators" className="bg-white border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen" />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] font-bold text-gray-400">Key Offerings / Pain Points</span>
-                    <input
-                      type="text"
-                      value={productDesc}
-                      onChange={(e) => setProductDesc(e.target.value)}
-                      placeholder="e.g. generating viral video ads in regional languages in minutes"
-                      className="bg-white border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none"
-                    />
+                    <input type="text" value={productDesc} onChange={e => setProductDesc(e.target.value)} placeholder="e.g. generating viral video ads in regional languages in minutes" className="bg-white border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen" />
                   </div>
                   <button
                     type="button"
@@ -718,119 +680,125 @@ export default function Dashboard() {
                     disabled={aiWriting || !productName.trim() || !productDesc.trim()}
                     className="w-full bg-brandGreen hover:bg-brandGreen-dark disabled:opacity-50 text-white font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition"
                   >
-                    {aiWriting ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Generating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Generate & Insert Script</span>
-                      </>
-                    )}
+                    {aiWriting ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Generating...</span></>) : (<><Sparkles className="w-3.5 h-3.5" /><span>Generate & Insert Script</span></>)}
                   </button>
                 </div>
               )}
+
+              <textarea
+                required
+                rows={4}
+                value={script}
+                onChange={e => setScript(e.target.value)}
+                placeholder={mode === 'product' ? "Enter the ad copy / pitch to be narrated over your product animation..." : "Type your script or a prompt for me to generate one for you..."}
+                className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition resize-none leading-relaxed"
+              />
             </div>
 
-            {/* UGC Video Prompts */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-              {/* Spoken Script (Speech Output) */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                    <Volume2 className="w-3.5 h-3.5 text-brandGreen" />
-                    <span>3. Spoken Script (Audio Output)</span>
-                  </label>
-                </div>
-                <textarea
-                  required
-                  rows={4}
-                  value={script}
-                  onChange={(e) => setScript(e.target.value)}
-                  placeholder="Paste the EXACT words you want the avatar to speak out loud. (e.g. 'Hey guys! Look at this new app...')"
-                  className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition resize-none leading-relaxed flex-grow min-h-[100px]"
-                />
-              </div>
-
-              {/* Visual Prompt (Scenery, Outfits, & Expressions) */}
-              <div className="flex flex-col gap-2">
-                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                  <Video className="w-3.5 h-3.5 text-brandGreen" />
-                  <span>4. Visual Scene Guidelines</span>
-                </label>
-                <textarea
-                  rows={4}
-                  value={visualPrompt}
-                  onChange={(e) => setVisualPrompt(e.target.value)}
-                  placeholder="Describe your scene setup (e.g. 'Cozy home background, smiling face expressions, wearing casual pink suit jacket')"
-                  className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition resize-none leading-relaxed flex-grow min-h-[100px]"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={rendering || !script.trim() || creditsBalance < 10}
-              className="w-full bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 mt-2 flex items-center justify-center gap-2 text-sm shadow-lg shadow-brandGreen-dark/20"
-            >
-              {rendering ? (
+            {/* ── Bottom Action Pills ────────────────────────────────────── */}
+            <div className="px-6 pb-4 flex flex-wrap gap-2">
+              {mode === 'avatar' && (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Submitting render task...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  <span>Generate Video (Costs 10 credits)</span>
+                  <button type="button" onClick={() => setShowAvatarModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-black/8 rounded-xl text-xs font-semibold text-gray-600 hover:border-brandGreen/40 hover:text-brandGreen-dark hover:bg-brandGreen/5 transition">
+                    <Plus className="w-3.5 h-3.5" /> Avatar
+                  </button>
+                  <button type="button" onClick={() => setShowVoiceModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-black/8 rounded-xl text-xs font-semibold text-gray-600 hover:border-brandGreen/40 hover:text-brandGreen-dark hover:bg-brandGreen/5 transition">
+                    <Plus className="w-3.5 h-3.5" /> Voice
+                    {selectedVoiceId && (
+                      <span className="bg-brandGreen/15 text-brandGreen-dark px-1.5 py-0.5 rounded-md text-[9px] font-bold">
+                        {voices.find((v: any) => v.voice_id === selectedVoiceId)?.name?.split(' ')[0] || '✓'}
+                      </span>
+                    )}
+                  </button>
                 </>
               )}
-            </button>
+              <button type="button" onClick={() => setShowStyleModal(true)}
+                className={`flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-semibold transition ${selectedStyle ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100' : 'bg-gray-50 border-black/8 text-gray-600 hover:border-brandGreen/40 hover:text-brandGreen-dark hover:bg-brandGreen/5'}`}>
+                <Plus className="w-3.5 h-3.5" /> Style or Brand System
+                {selectedStyle && <span className="text-[9px] font-bold">· {selectedStyle.name}</span>}
+              </button>
+              <button type="button" onClick={() => setShowInstructionsModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-black/8 rounded-xl text-xs font-semibold text-gray-600 hover:border-brandGreen/40 hover:text-brandGreen-dark hover:bg-brandGreen/5 transition">
+                <Plus className="w-3.5 h-3.5" /> Instructions
+                {instructions && <span className="w-2 h-2 rounded-full bg-brandGreen inline-block ml-0.5" />}
+              </button>
+              <button type="button" onClick={() => setShowAttachmentsModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-black/8 rounded-xl text-xs font-semibold text-gray-600 hover:border-brandGreen/40 hover:text-brandGreen-dark hover:bg-brandGreen/5 transition">
+                <Plus className="w-3.5 h-3.5" /> Attachments
+              </button>
+            </div>
+
+            {/* ── Visual / Instructions area (expanded from pills) ───────── */}
+            {(visualPrompt || instructions) && (
+              <div className="px-6 pb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {visualPrompt !== undefined && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <Video className="w-3 h-3 text-brandGreen" /> Visual Scene
+                    </label>
+                    <textarea rows={2} value={visualPrompt} onChange={e => setVisualPrompt(e.target.value)} placeholder="Cozy home background, smiling face..." className="bg-gray-50 border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen resize-none" />
+                  </div>
+                )}
+                {instructions !== undefined && instructions && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Extra Instructions</label>
+                    <textarea rows={2} value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="e.g. speak slowly, emphasize the discount..." className="bg-gray-50 border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen resize-none" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Submit Button ─────────────────────────────────────────── */}
+            <div className="px-6 pb-6">
+              <button
+                type="submit"
+                disabled={rendering || !script.trim() || creditsBalance < 10}
+                className="w-full bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-brandGreen-dark/20"
+              >
+                {rendering ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting render task...</span></>
+                ) : (
+                  <><Send className="w-4 h-4" /><span>Generate Video (Costs 20 credits)</span></>
+                )}
+              </button>
+            </div>
           </form>
         </div>
       </div>
 
-      {/* Right Column: Billing and Render History */}
+      {/* ─── Right: Sidebar ─────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-6">
-        {/* Credits topup box */}
+        {/* Credits topup */}
         <div className="bg-white border border-black/5 rounded-3xl p-6 shadow-xl shadow-brandGreen-dark/5 flex flex-col gap-4">
           <h3 className="font-bold text-sm text-brandGreen-dark flex items-center gap-1.5">
             <CreditCard className="w-4 h-4 text-brandGreen" />
-            <span>Top-up Workspace Credits</span>
+            <span>Top-up Credits</span>
           </h3>
           <div className="grid grid-cols-2 gap-3 mt-1">
-            <button
-              onClick={() => handleTopup('BASIC')}
-              disabled={billingLoading}
-              className="p-3 border border-black/10 hover:border-brandGreen hover:bg-brandGreen-light/10 rounded-2xl flex flex-col gap-1 text-left transition disabled:opacity-50"
-            >
+            <button onClick={() => handleTopup('BASIC')} disabled={billingLoading} className="p-3 border border-black/10 hover:border-brandGreen hover:bg-brandGreen-light/10 rounded-2xl flex flex-col gap-1 text-left transition disabled:opacity-50">
               <span className="font-bold text-xs text-brandGreen-dark">₹1,999 Package</span>
               <span className="text-[10px] text-gray-400">1,000 credits</span>
             </button>
-            <button
-              onClick={() => handleTopup('PRO')}
-              disabled={billingLoading}
-              className="p-3 border border-brandGreen bg-brandGreen-light/20 hover:bg-brandGreen-light/30 rounded-2xl flex flex-col gap-1 text-left transition disabled:opacity-50"
-            >
+            <button onClick={() => handleTopup('PRO')} disabled={billingLoading} className="p-3 border border-brandGreen bg-brandGreen-light/20 hover:bg-brandGreen-light/30 rounded-2xl flex flex-col gap-1 text-left transition disabled:opacity-50">
               <span className="font-bold text-xs text-brandGreen-dark">₹4,999 Package</span>
               <span className="text-[10px] text-brandGreen-dark">3,000 credits</span>
             </button>
           </div>
         </div>
 
-        {/* History of renders */}
+        {/* Video history */}
         <div className="bg-white border border-black/5 rounded-3xl p-6 shadow-xl shadow-brandGreen-dark/5 flex-grow flex flex-col gap-5">
           <h3 className="font-bold text-sm text-brandGreen-dark flex items-center gap-1.5 border-b border-black/5 pb-3">
             <History className="w-4 h-4 text-brandGreen" />
             <span>Generated Videos</span>
           </h3>
-
-          <div className="flex flex-col gap-4 overflow-y-auto max-h-[400px] pr-1">
+          <div className="flex flex-col gap-4 overflow-y-auto max-h-[500px] pr-1">
             {videos.length > 0 ? (
               videos.map((vid: any) => (
                 <div key={vid.id} className="border border-black/5 p-3 rounded-2xl flex gap-3 bg-gray-50/30">
-                  <div className="w-20 aspect-video rounded-xl bg-brandGreen-dark/5 overflow-hidden flex-shrink-0 relative flex items-center justify-center border border-black/5">
+                  <div className="w-16 aspect-video rounded-xl bg-brandGreen-dark/5 overflow-hidden flex-shrink-0 border border-black/5 flex items-center justify-center">
                     {vid.thumbnailUrl ? (
                       <img src={vid.thumbnailUrl} alt="Thumbnail" className="w-full h-full object-cover" />
                     ) : (
@@ -838,30 +806,26 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="flex-grow min-w-0 flex flex-col justify-center">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">ID: #{vid.id.slice(0, 8)}</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">#{vid.id.slice(0, 8)}</span>
                     <p className="text-[11px] font-medium text-brandGreen-dark truncate mt-0.5">{vid.script}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className={`text-[9px] font-bold uppercase ${
-                        vid.status === 'COMPLETED'
-                          ? 'text-emerald-500'
-                          : vid.status === 'FAILED'
-                          ? 'text-red-500'
-                          : 'text-indigo-500'
-                      }`}>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <span className={`text-[9px] font-bold uppercase ${vid.status === 'COMPLETED' ? 'text-emerald-500' : vid.status === 'FAILED' ? 'text-red-500' : 'text-indigo-500'}`}>
                         {vid.status}
                       </span>
-                      {vid.status === 'COMPLETED' && vid.videoUrl && (
-                        <a
-                          href={vid.videoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] font-bold text-brandGreen hover:underline flex items-center gap-1"
-                        >
-                          <Play className="w-2.5 h-2.5 fill-brandGreen" />
-                          <span>Watch</span>
-                        </a>
-                      )}
                     </div>
+                    {vid.status === 'COMPLETED' && vid.videoUrl && (
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <a href={vid.videoUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-brandGreen hover:bg-brandGreen/10 transition flex items-center gap-1 bg-brandGreen/5 px-2.5 py-1 rounded-lg">
+                          <Play className="w-2.5 h-2.5 fill-brandGreen" /> Watch
+                        </a>
+                        <button type="button" onClick={() => handleDownload(vid.videoUrl, `ugc_ad_${vid.id.slice(0, 8)}.mp4`)} className="text-[10px] font-bold text-brandGreen hover:bg-brandGreen/10 transition flex items-center gap-1 bg-brandGreen/5 px-2.5 py-1 rounded-lg">
+                          Download
+                        </button>
+                        <button type="button" onClick={() => handleShare(vid.id)} className="text-[10px] font-bold text-brandGreen hover:bg-brandGreen/10 transition flex items-center gap-1 bg-brandGreen/5 px-2.5 py-1 rounded-lg">
+                          {copiedId === vid.id ? 'Copied!' : 'Share'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -872,13 +836,440 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Apple-style smooth bouncing progress modal */}
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL: Avatar Picker
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {showAvatarModal && (
+        <ModalBackdrop onClose={() => setShowAvatarModal(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border border-black/5 overflow-hidden">
+            {/* Header */}
+            <div className="p-6 border-b border-black/5 flex items-start justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-brandGreen-dark">Create a video using Avatar V</h3>
+                <p className="text-xs text-gray-400 mt-0.5">HeyGen's newest and best-quality Avatar model</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href="https://app.heygen.com/avatars"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-bold text-white bg-brandGreen hover:bg-brandGreen-dark px-3 py-2 rounded-xl flex items-center gap-1.5 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Create Avatar <ExternalLink className="w-3 h-3 opacity-70" />
+                </a>
+                <button onClick={() => setShowAvatarModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-black/5 flex-shrink-0 px-6">
+              {AVATAR_TABS.map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setAvatarTab(tab)}
+                  className={`px-4 py-3 text-sm font-semibold border-b-2 transition ${avatarTab === tab ? 'border-brandGreen text-brandGreen-dark' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                >
+                  {tab}
+                </button>
+              ))}
+              <div className="ml-auto flex items-center gap-2 py-2">
+                <button onClick={() => setAvatarViewMode('grid')} className={`p-1.5 rounded-lg transition ${avatarViewMode === 'grid' ? 'bg-gray-100 text-brandGreen-dark' : 'text-gray-400 hover:text-gray-600'}`}>
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button onClick={() => setAvatarViewMode('list')} className={`p-1.5 rounded-lg transition ${avatarViewMode === 'list' ? 'bg-gray-100 text-brandGreen-dark' : 'text-gray-400 hover:text-gray-600'}`}>
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Search + filter row */}
+            <div className="px-6 py-3 border-b border-black/5 flex items-center gap-3 flex-shrink-0">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={avatarSearch}
+                  onChange={e => setAvatarSearch(e.target.value)}
+                  className="pl-9 pr-4 py-2 bg-gray-50 border border-black/5 rounded-xl w-full text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen"
+                />
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              </div>
+              <button className="p-2 rounded-xl border border-black/5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition">
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Category pills */}
+            <div className="px-6 py-3 flex gap-2 flex-wrap border-b border-black/5 flex-shrink-0">
+              {AVATAR_CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setAvatarCategory(cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition border ${avatarCategory === cat ? 'bg-brandGreen-dark text-white border-brandGreen-dark' : 'bg-gray-50 text-gray-600 border-black/8 hover:border-brandGreen/30 hover:text-brandGreen-dark'}`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Avatar grid */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {!avatarsRes && !avatarsErr ? (
+                <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
+                  <Loader2 className="w-5 h-5 animate-spin text-brandGreen" />
+                  <span className="text-sm">Loading avatars...</span>
+                </div>
+              ) : avatarsErr ? (
+                <div className="text-center py-16 text-red-500 text-sm">Failed to load avatars from HeyGen.</div>
+              ) : avatarTab === 'My Avatars' ? (
+                <div className="text-center py-16 flex flex-col items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+                    <User className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600">No custom avatars yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Create your own avatar on HeyGen platform</p>
+                  </div>
+                  <a href="https://app.heygen.com/avatars" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-bold text-white bg-brandGreen hover:bg-brandGreen-dark px-4 py-2 rounded-xl transition">
+                    <Plus className="w-3.5 h-3.5" /> Create Avatar on HeyGen <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              ) : (
+                <div className={avatarViewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 gap-4' : 'flex flex-col gap-3'}>
+                  {visibleAvatars.length > 0 ? visibleAvatars.map((av: any) => {
+                    const avId = av.id || av.avatar_id;
+                    const avName = av.name || av.avatar_name || 'Unnamed';
+                    const isSelected = selectedAvatarId === avId || selectedCharKey === getCharacterKey(avName);
+
+                    if (avatarViewMode === 'list') {
+                      return (
+                        <div
+                          key={avId}
+                          role="button"
+                          onClick={() => { setSelectedAvatarId(avId); setShowAvatarModal(false); }}
+                          className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition ${isSelected ? 'border-brandGreen bg-brandGreen/5 ring-1 ring-brandGreen/20' : 'border-black/5 hover:bg-gray-50'}`}
+                        >
+                          <div className="w-12 h-14 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
+                            {av.preview_image_url ? (
+                              <img src={av.preview_image_url} alt={avName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center"><User className="w-4 h-4 text-gray-300" /></div>
+                            )}
+                          </div>
+                          <div className="flex-grow min-w-0">
+                            <h4 className="font-bold text-sm text-brandGreen-dark truncate">{avName}</h4>
+                            <span className="text-[10px] text-gray-400 capitalize">{av.gender || 'neutral'} · {av._category}</span>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-brandGreen flex-shrink-0" />}
+                        </div>
+                      );
+                    }
+
+                    // Group view (like HeyGen) — show multiple looks per character
+                    const charLooks = allAvatars.filter((a: any) => getCharacterKey(a.name || a.avatar_name || '') === getCharacterKey(avName));
+                    return (
+                      <div
+                        key={avId}
+                        role="button"
+                        onClick={() => { setSelectedAvatarId(avId); setShowAvatarModal(false); }}
+                        className={`rounded-2xl border cursor-pointer transition overflow-hidden ${isSelected ? 'border-brandGreen ring-2 ring-brandGreen/20' : 'border-black/5 hover:border-gray-200'}`}
+                      >
+                        {/* Multi-image mosaic like HeyGen */}
+                        <div className={`grid gap-0.5 bg-gray-100 ${charLooks.length >= 2 ? 'grid-cols-2' : 'grid-cols-1'}`} style={{ height: '140px' }}>
+                          {charLooks.slice(0, charLooks.length >= 4 ? 4 : charLooks.length >= 2 ? 2 : 1).map((look: any, i: number) => (
+                            <div key={look.id || look.avatar_id} className={`overflow-hidden ${charLooks.length >= 4 && i === 0 ? 'row-span-2' : ''}`}>
+                              {look.preview_image_url ? (
+                                <img
+                                  src={look.preview_image_url}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                  onMouseEnter={() => setHoveredAvatarId(avId)}
+                                  onMouseLeave={() => setHoveredAvatarId(null)}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                  <User className="w-6 h-6 text-gray-300" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="p-2.5 bg-white flex items-center justify-between">
+                          <div>
+                            <h4 className="font-bold text-xs text-brandGreen-dark truncate">{avName.split(' ')[0]}</h4>
+                            <span className="text-[9px] text-gray-400 capitalize">{av._category}</span>
+                          </div>
+                          {isSelected && (
+                            <div className="w-5 h-5 rounded-full bg-brandGreen flex items-center justify-center">
+                              <Check className="w-3 h-3 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="col-span-3 text-center py-12 text-xs text-gray-400">No avatars match your search.</div>
+                  )}
+                  {filteredAvatars.length > avatarLimit && (
+                    <div
+                      role="button"
+                      onClick={() => setAvatarLimit(prev => prev + 24)}
+                      className="col-span-3 py-2.5 bg-gray-50 border border-dashed border-black/10 hover:bg-gray-100 rounded-xl text-xs font-bold text-brandGreen-dark text-center transition cursor-pointer"
+                    >
+                      Load More (+{filteredAvatars.length - avatarLimit} more)
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL: Voice Picker
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {showVoiceModal && (
+        <ModalBackdrop onClose={() => setShowVoiceModal(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl border border-black/5 overflow-hidden">
+            <div className="p-6 border-b border-black/5 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-brandGreen-dark">Choose a Voice</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Select the voice that best fits your UGC ad</p>
+              </div>
+              <button onClick={() => setShowVoiceModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-3 flex flex-wrap gap-2 border-b border-black/5 flex-shrink-0">
+              <div className="relative flex-1 min-w-[150px]">
+                <input type="text" placeholder="Search voices..." value={voiceSearch} onChange={e => setVoiceSearch(e.target.value)} className="pl-9 pr-4 py-2 bg-gray-50 border border-black/5 rounded-xl w-full text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen" />
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              </div>
+              <select value={voiceLanguage} onChange={e => setVoiceLanguage(e.target.value)} className="px-3 py-2 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen">
+                <option value="all">All Languages</option>
+                {uniqueLanguages.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+              </select>
+              <select value={voiceGender} onChange={e => setVoiceGender(e.target.value)} className="px-3 py-2 bg-gray-50 border border-black/5 rounded-xl text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen">
+                <option value="all">All Genders</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {!voicesRes && !voicesErr ? (
+                <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin text-brandGreen" />
+                  <span className="text-sm">Loading voices...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {visibleVoices.length > 0 ? visibleVoices.map((v: any) => {
+                    const audioUrl = v.preview_audio || v.preview_audio_url;
+                    const isSelected = selectedVoiceId === v.voice_id;
+                    return (
+                      <div
+                        key={v.voice_id}
+                        role="button"
+                        onClick={() => { setSelectedVoiceId(v.voice_id); setShowVoiceModal(false); }}
+                        className={`p-4 rounded-2xl border cursor-pointer transition flex items-center justify-between ${isSelected ? 'border-brandGreen bg-brandGreen/5 ring-1 ring-brandGreen/20' : 'border-black/5 hover:bg-gray-50'}`}
+                      >
+                        <div className="min-w-0 flex-grow pr-3">
+                          <div className="font-bold text-sm text-brandGreen-dark flex items-center gap-1.5 flex-wrap">
+                            <span className="truncate">{v.name}</span>
+                            <span className="text-[9px] font-semibold px-2 py-0.5 bg-black/5 text-gray-500 rounded-full capitalize flex-shrink-0">{v.gender}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-400 block mt-0.5">{v.language}</span>
+                        </div>
+                        {audioUrl && (
+                          <button type="button" onClick={e => playVoicePreview(v.voice_id, audioUrl, e)} className="p-2 rounded-full hover:bg-black/5 text-brandGreen transition flex-shrink-0">
+                            {voicePreviewPlaying === v.voice_id ? <Pause className="w-4 h-4 fill-brandGreen animate-pulse" /> : <Volume2 className="w-4 h-4" />}
+                          </button>
+                        )}
+                        {isSelected && <Check className="w-4 h-4 text-brandGreen flex-shrink-0 ml-2" />}
+                      </div>
+                    );
+                  }) : (
+                    <div className="text-center py-8 text-xs text-gray-400">No voices match your criteria.</div>
+                  )}
+                  {filteredVoices.length > voiceLimit && (
+                    <button type="button" onClick={() => setVoiceLimit(p => p + 24)} className="py-2 bg-gray-50 border border-dashed border-black/10 hover:bg-gray-100 rounded-xl text-xs font-bold text-brandGreen-dark text-center transition">
+                      Load More Voices (+{filteredVoices.length - voiceLimit} more)
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL: Style Picker
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {showStyleModal && (
+        <ModalBackdrop onClose={() => setShowStyleModal(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-black/5 overflow-hidden">
+            <div className="p-6 border-b border-black/5 flex items-center justify-between flex-shrink-0">
+              <h3 className="text-lg font-bold text-brandGreen-dark">Choose a Style or Brand System</h3>
+              <button onClick={() => setShowStyleModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Style / Brand System tab */}
+            <div className="flex px-6 pt-4 gap-1 flex-shrink-0">
+              <button className="flex-1 py-2 rounded-xl text-xs font-bold text-brandGreen-dark bg-brandGreen/10 border border-brandGreen/20 text-center">Style</button>
+              <button className="flex-1 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-gray-600 hover:bg-gray-50 border border-transparent text-center transition">Brand System</button>
+            </div>
+
+            {/* Category pills */}
+            <div className="px-6 py-3 flex gap-2 flex-wrap flex-shrink-0">
+              {STYLE_CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setStyleCategory(cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition border ${styleCategory === cat ? 'bg-brandGreen-dark text-white border-brandGreen-dark' : 'bg-gray-50 text-gray-600 border-black/8 hover:border-brandGreen/30 hover:text-brandGreen-dark'}`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Style grid */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {filteredStyles.length === 0 ? (
+                <div className="text-center py-12 text-xs text-gray-400">No styles available yet.</div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {filteredStyles.map((s: any) => {
+                    const isSelected = selectedStyle?.id === s.id;
+                    return (
+                      <div
+                        key={s.id}
+                        role="button"
+                        onClick={() => { setSelectedStyle(isSelected ? null : s); setShowStyleModal(false); }}
+                        className={`rounded-2xl border cursor-pointer transition overflow-hidden group ${isSelected ? 'border-brandGreen ring-2 ring-brandGreen/20' : 'border-black/5 hover:border-gray-200'}`}
+                      >
+                        <div className="aspect-video bg-gray-100 overflow-hidden relative">
+                          <img
+                            src={s.preview}
+                            alt={s.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-brandGreen/20 flex items-center justify-center">
+                              <div className="w-8 h-8 rounded-full bg-brandGreen flex items-center justify-center">
+                                <Check className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-2.5 bg-white">
+                          <h4 className="font-bold text-xs text-brandGreen-dark truncate">{s.name}</h4>
+                          <span className="text-[9px] text-gray-400">{s.category}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL: Instructions
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {showInstructionsModal && (
+        <ModalBackdrop onClose={() => setShowInstructionsModal(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-black/5 p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-brandGreen-dark">Extra Instructions</h3>
+              <button onClick={() => setShowInstructionsModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">Add scene directions, tone guidance, or visual cues for the AI.</p>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Visual Scene / Background</label>
+              <textarea
+                rows={3}
+                value={visualPrompt}
+                onChange={e => setVisualPrompt(e.target.value)}
+                placeholder="e.g. Cozy home background, smiling face expressions, wearing casual pink suit jacket"
+                className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen resize-none"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Tone & Delivery Notes</label>
+              <textarea
+                rows={3}
+                value={instructions}
+                onChange={e => setInstructions(e.target.value)}
+                placeholder="e.g. speak slowly and clearly, emphasize the discount, be energetic and friendly"
+                className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen resize-none"
+              />
+            </div>
+            <button onClick={() => setShowInstructionsModal(false)} className="bg-brandGreen-dark hover:bg-[#0E4A27] text-white font-bold py-2.5 rounded-xl text-xs transition">
+              Save Instructions
+            </button>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL: Attachments (Product Ad)
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {showAttachmentsModal && (
+        <ModalBackdrop onClose={() => setShowAttachmentsModal(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-black/5 p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-brandGreen-dark">Attachments</h3>
+              <button onClick={() => setShowAttachmentsModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">Attach a product image to create an animated product ad. This will switch your studio to Product Ad mode.</p>
+            <input
+              type="url"
+              value={productImageUrl}
+              onChange={e => { setProductImageUrl(e.target.value); setProductImagePreview(e.target.value); }}
+              placeholder="Paste product image URL (https://...)"
+              className="bg-gray-50 border border-black/5 rounded-2xl px-4 py-3 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen"
+            />
+            {productImagePreview && (
+              <img src={productImagePreview} alt="Preview" className="w-full max-h-40 object-contain rounded-xl border border-black/5 bg-gray-50 p-2" onError={() => setProductImagePreview('')} />
+            )}
+            <button
+              onClick={() => {
+                if (productImageUrl.trim()) {
+                  setMode('product');
+                  setShowAttachmentsModal(false);
+                }
+              }}
+              disabled={!productImageUrl.trim()}
+              className="bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5"
+            >
+              <ArrowRight className="w-4 h-4" /> Use in Product Ad Mode
+            </button>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          Processing Modal
+      ═══════════════════════════════════════════════════════════════════════ */}
       {showProcessingModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white/90 backdrop-blur-xl border border-white/40 rounded-[32px] p-8 max-w-md w-full shadow-2xl shadow-black/20 flex flex-col items-center text-center animate-apple-bounce">
-            
-            {/* Stage-based Animated Icon */}
-            <div className="relative flex items-center justify-center w-24 h-24 mb-6 rounded-full bg-brandGreen/10 animate-pulse-ring">
+          <div className="bg-white/90 backdrop-blur-xl border border-white/40 rounded-[32px] p-8 max-w-md w-full shadow-2xl shadow-black/20 flex flex-col items-center text-center">
+            <div className="relative flex items-center justify-center w-24 h-24 mb-6 rounded-full bg-brandGreen/10 animate-pulse">
               {modalStage === 5 ? (
                 <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg animate-in zoom-in duration-300">
                   <Check className="w-8 h-8" />
@@ -893,9 +1284,7 @@ export default function Dashboard() {
             {modalStage === 5 ? (
               <>
                 <h3 className="text-xl font-bold text-brandGreen-dark mb-2">UGC Ad Initiated!</h3>
-                <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
-                  Your video render is now offloaded to our background processing pipeline. Check progress in the right sidebar!
-                </p>
+                <p className="text-sm text-gray-500 max-w-xs leading-relaxed">Your video render is now processing. Check progress in your video history!</p>
               </>
             ) : (
               <>
@@ -903,9 +1292,7 @@ export default function Dashboard() {
                 <p className="text-xs text-brandGreen font-semibold px-3 py-1 bg-brandGreen-light/20 rounded-full mb-6 uppercase tracking-wider animate-pulse">
                   Step {modalStage + 1} of 5
                 </p>
-
-                {/* Stepper progress indicator list */}
-                <div className="w-full text-left bg-gray-50/50 border border-black/5 rounded-2xl p-4.5 flex flex-col gap-3">
+                <div className="w-full text-left bg-gray-50/50 border border-black/5 rounded-2xl p-4 flex flex-col gap-3">
                   {modalStages.map((stage, idx) => {
                     const isDone = idx < modalStage;
                     const isActive = idx === modalStage;
@@ -913,13 +1300,9 @@ export default function Dashboard() {
                       <div key={idx} className={`flex items-start gap-3 transition-opacity duration-300 ${isDone ? 'opacity-50' : isActive ? 'opacity-100' : 'opacity-30'}`}>
                         <div className="mt-0.5">
                           {isDone ? (
-                            <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-white">
-                              <Check className="w-2.5 h-2.5 stroke-[3]" />
-                            </div>
+                            <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center"><Check className="w-2.5 h-2.5 text-white stroke-[3]" /></div>
                           ) : isActive ? (
-                            <div className="w-4 h-4 rounded-full bg-brandGreen flex items-center justify-center text-white animate-pulse">
-                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                            </div>
+                            <div className="w-4 h-4 rounded-full bg-brandGreen flex items-center justify-center animate-pulse"><Loader2 className="w-2.5 h-2.5 text-white animate-spin" /></div>
                           ) : (
                             <div className="w-4 h-4 rounded-full border border-gray-300 bg-white" />
                           )}
@@ -931,10 +1314,6 @@ export default function Dashboard() {
                       </div>
                     );
                   })}
-                </div>
-
-                <div className="mt-6 text-[10px] text-gray-400 max-w-xs">
-                  This modal is powered by HeyGen API. Outfits, background sets, and accents are being synthesized in the cloud.
                 </div>
               </>
             )}

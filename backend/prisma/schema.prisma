@@ -10,15 +10,45 @@ datasource db {
 model User {
   id             String        @id
   email          String        @unique
+  mobileNumber   String?       @unique @map("mobile_number")
   name           String?
   avatarUrl      String?       @map("avatar_url")
-  creditsBalance Int           @default(100) @map("credits_balance")
+  creditsBalance Int           @default(20) @map("credits_balance")
+  isBanned       Boolean       @default(false) @map("is_banned")
+  role           String        @default("USER") @map("role")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
+  createdBy      String?       @map("created_by")
+  planName       String?       @default("None") @map("plan_name")
+  planValidity   String?       @default("Lifetime") @map("plan_validity")
+  planExpiresAt  DateTime?     @map("plan_expires_at")
   transactions   Transaction[]
   videos         Video[]
 
   @@map("users")
+}
+
+model Plan {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  price     Float
+  credits   Int
+  isActive  Boolean       @default(true) @map("is_active")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  features  PlanFeature[]
+
+  @@map("plans")
+}
+
+model PlanFeature {
+  id        String   @id @default(uuid())
+  planId    String   @map("plan_id")
+  text      String
+  isEnabled Boolean  @default(true) @map("is_enabled")
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("plan_features")
 }
 
 model Video {

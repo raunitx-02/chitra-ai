@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import axios from 'axios';
 import { 
   Sparkles, 
   Play, 
@@ -57,6 +58,48 @@ const ScrollSection = ({ children, className = "", id = "" }: { children: React.
 export default function Home() {
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const [plans, setPlans] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005'}/api/payments/plans`;
+        const res = await axios.get(url);
+        setPlans(res.data);
+      } catch (err) {
+        console.error('Failed to load dynamic plans:', err);
+        // Fallback plans if offline or database error
+        setPlans([
+          {
+            id: 'basic',
+            name: 'BASIC',
+            price: 1999,
+            credits: 1000,
+            features: [
+              { id: 'b1', text: '1,000 video generation credits', isEnabled: true },
+              { id: 'b2', text: 'Access to cosmetic avatars', isEnabled: true },
+              { id: 'b3', text: 'Hindi & English voice styles', isEnabled: true },
+              { id: 'b4', text: 'Standard rendering priority', isEnabled: true },
+            ]
+          },
+          {
+            id: 'pro',
+            name: 'PRO',
+            price: 4999,
+            credits: 3000,
+            features: [
+              { id: 'p1', text: '3,000 video generation credits', isEnabled: true },
+              { id: 'p2', text: 'Access to premium cosmetic avatars', isEnabled: true },
+              { id: 'p3', text: 'Hindi, Tamil, Telugu & English voices', isEnabled: true },
+              { id: 'p4', text: 'Priority rendering queue (5x faster)', isEnabled: true },
+              { id: 'p5', text: 'Dedicated 24/7 email support', isEnabled: true },
+            ]
+          }
+        ]);
+      }
+    };
+    fetchPlans();
+  }, []);
 
   const toggleVoicePlay = (lang: string, phrase: string, langCode: string) => {
     if (typeof window === 'undefined') return;
@@ -103,8 +146,16 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-[#FAFAF8] text-[#1A1A1A] overflow-x-hidden">
       
+      {/* Dynamic Announcement Bar */}
+      <div className="bg-brandGreen-dark text-white text-xs font-semibold py-3 px-4 text-center flex items-center justify-center gap-2 relative z-50 shadow-md">
+        <span className="bg-brandGold text-brandGreen-dark text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full animate-bounce">
+          Free Trial
+        </span>
+        <span>🎉 Special Launch Promo: Your first UGC video is <strong>completely free</strong>! Get 20 credits on signup instantly.</span>
+      </div>
+
       {/* 1. Hero Section */}
-      <section className="relative pt-16 pb-20 lg:pt-24 lg:pb-32 px-6 overflow-hidden">
+      <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-32 px-6 overflow-hidden">
         <div aria-hidden="true" className="absolute top-10 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-gradient-to-tr from-[#CEF8DC]/30 to-[#E8C46B]/20 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center relative z-10">
@@ -215,12 +266,14 @@ export default function Home() {
       {/* Brands Showcase */}
       <section className="bg-white border-y border-black/[0.03] py-8 overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 flex flex-col gap-4 text-center">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">TRUSTED BY CONTENT TEAMS AT LEADING INDIAN BRANDS</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">TRUSTED BY CONTENT TEAMS AT LEADING COSMETIC BRANDS</span>
           <div className="flex flex-wrap items-center justify-center gap-12 text-lg font-black text-gray-300">
-            <span className="hover:text-gray-500 transition duration-300">Bewakoof</span>
-            <span className="hover:text-gray-500 transition duration-300">Mamaearth</span>
-            <span className="hover:text-gray-500 transition duration-300">Sleepy Owl</span>
-            <span className="hover:text-gray-500 transition duration-300">Sugar Cosmetics</span>
+            <span className="hover:text-gray-500 transition duration-300">The Ordinary</span>
+            <span className="hover:text-gray-500 transition duration-300">Glossier</span>
+            <span className="hover:text-gray-500 transition duration-300">Somethinc</span>
+            <span className="hover:text-gray-500 transition duration-300">Fenty Beauty</span>
+            <span className="hover:text-gray-500 transition duration-300">Wardah</span>
+            <span className="hover:text-gray-500 transition duration-300">MAC Cosmetics</span>
           </div>
         </div>
       </section>
@@ -229,9 +282,9 @@ export default function Home() {
       <ScrollSection className="bg-[#F3F1EA] py-12 border-b border-black/[0.03]">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {[
-            { count: '100K+', desc: 'Indian Businesses' },
+            { count: '100K+', desc: 'Global Businesses' },
             { count: '1.2M+', desc: 'Ads & Reels Generated' },
-            { count: '10+', desc: 'Indian Regional Dialects' },
+            { count: '20+', desc: 'Global Languages & Voices' },
             { count: '90%', desc: 'Cost Reduction vs. Crew' },
           ].map((stat, idx) => (
             <div key={idx} className="flex flex-col gap-1.5">
@@ -576,49 +629,57 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-5xl mx-auto w-full">
-          {[
-            { plan: 'BASIC', price: '1,999', desc: 'Ideal for small business promos.', features: ['1,000 Video Generation Credits', 'HD Video Exports', 'Standard Presenter Catalog', 'Basic AI Script Generator helper', 'Email Support'], color: 'border-black/5 bg-white' },
-            { plan: 'PRO', price: '4,999', desc: 'Perfect for scaling D2C marketers.', features: ['3,000 Video Generation Credits', 'HD Video Exports', 'Priority Rendering Queue', 'Advanced AI Scriptwriter tool', 'All Regional Accent Voices', 'Priority WhatsApp Support'], color: 'border-brandGreen bg-white shadow-xl shadow-brandGreen/5 relative' },
-            { plan: 'BUSINESS', price: '9,999', desc: 'Designed for agency & content teams.', features: ['7,500 Video Generation Credits', 'Custom Avatar Cloning options', 'HD Video Exports', 'API developer access keys', 'Dedicated Campaign Manager'], color: 'border-black/5 bg-white' },
-          ].map((card, idx) => (
-            <div key={idx} className={`border rounded-[32px] p-8 flex flex-col justify-between gap-6 ${card.color}`}>
-              {card.plan === 'PRO' && (
-                <span className="absolute -top-3.5 left-6 bg-brandGreen text-white text-[10px] font-bold uppercase tracking-wider px-3.5 py-1 rounded-full">
-                  Best Value
-                </span>
-              )}
+          {plans.map((plan: any) => {
+            const isPro = plan.name === 'PRO';
+            const cardDesc = plan.name === 'PRO' 
+              ? 'Perfect for scaling D2C marketers.' 
+              : plan.name === 'BASIC' 
+                ? 'Ideal for small business promos.' 
+                : 'Designed for agency & content teams.';
+            const cardColor = isPro
+              ? 'border-brandGreen bg-white shadow-xl shadow-brandGreen/5 relative'
+              : 'border-black/5 bg-white';
 
-              <div>
-                <h3 className="font-bold text-xl text-brandGreen-dark">{card.plan}</h3>
-                <p className="text-xs text-gray-400 mt-1">{card.desc}</p>
+            return (
+              <div key={plan.id} className={`border rounded-[32px] p-8 flex flex-col justify-between gap-6 ${cardColor}`}>
+                {isPro && (
+                  <span className="absolute -top-3.5 left-6 bg-brandGreen text-white text-[10px] font-bold uppercase tracking-wider px-3.5 py-1 rounded-full">
+                    Best Value
+                  </span>
+                )}
 
-                <div className="mt-5 flex items-baseline gap-1 text-brandGreen-dark">
-                  <span className="text-4xl font-black">₹{card.price}</span>
-                  <span className="text-xs text-gray-400 font-semibold">/ topup pack</span>
+                <div>
+                  <h3 className="font-bold text-xl text-brandGreen-dark">{plan.name}</h3>
+                  <p className="text-xs text-gray-400 mt-1">{cardDesc}</p>
+
+                  <div className="mt-5 flex items-baseline gap-1 text-brandGreen-dark">
+                    <span className="text-4xl font-black">₹{plan.price.toLocaleString('en-IN')}</span>
+                    <span className="text-xs text-gray-400 font-semibold">/ topup pack</span>
+                  </div>
+
+                  <div className="border-t border-black/5 mt-6 pt-6 flex flex-col gap-3">
+                    {plan.features.filter((f: any) => f.isEnabled).map((feat: any) => (
+                      <div key={feat.id} className="flex items-center gap-2.5 text-xs text-gray-600 font-medium">
+                        <CheckCircle2 className="w-4.5 h-4.5 text-brandGreen flex-shrink-0" />
+                        <span>{feat.text}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="border-t border-black/5 mt-6 pt-6 flex flex-col gap-3">
-                  {card.features.map((feat, fIdx) => (
-                    <div key={fIdx} className="flex items-center gap-2.5 text-xs text-gray-600 font-medium">
-                      <CheckCircle2 className="w-4.5 h-4.5 text-brandGreen flex-shrink-0" />
-                      <span>{feat}</span>
-                    </div>
-                  ))}
-                </div>
+                <Link
+                  href="/login"
+                  className={`w-full text-center py-3.5 rounded-xl text-sm font-bold transition ${
+                    isPro
+                      ? 'bg-brandGreen-dark text-white hover:bg-[#0E4A27]'
+                      : 'bg-white hover:bg-gray-50 border border-black/10 text-brandGreen-dark'
+                  }`}
+                >
+                  Purchase Plan
+                </Link>
               </div>
-
-              <Link
-                href="/login"
-                className={`w-full text-center py-3.5 rounded-xl text-sm font-bold transition ${
-                  card.plan === 'PRO'
-                    ? 'bg-brandGreen-dark text-white hover:bg-[#0E4A27]'
-                    : 'bg-white hover:bg-gray-50 border border-black/10 text-brandGreen-dark'
-                }`}
-              >
-                Purchase Plan
-              </Link>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </ScrollSection>
 
@@ -628,7 +689,7 @@ export default function Home() {
           <h2 className="font-heading text-3xl font-bold text-brandGreen-dark text-center">Frequently Asked Questions</h2>
           <div className="flex flex-col gap-4">
             {[
-              { q: 'How many videos can I generate per credit?', a: 'Generating a video costs 10 credits. A Basic top-up pack (1,000 credits) allows you to render up to 100 HD marketing videos.' },
+              { q: 'How many videos can I generate per credit?', a: 'Generating a video costs 20 credits. A Basic top-up pack (1,000 credits) allows you to render up to 50 HD marketing videos.' },
               { q: 'Does RetailStacker AI generate video script automatically?', a: 'Yes, inside the studio workshop dashboard, you can toggle the "Write script with AI" helper, enter your product parameters, and the AI will auto-write copy in Hindi, Tamil, Telugu or English.' },
               { q: 'Can I choose different languages and accents?', a: 'Yes, our platform supports Hindi, Tamil, Telugu, Kannada, English (IN), and 5+ more regional accents.' },
               { q: 'Are these videos copyright-free for advertising?', a: 'Yes. All video rendering exports generated on RetailStacker AI belong to you. You are free to run them as paid advertisements on Meta, Google, TikTok, or YouTube.' },

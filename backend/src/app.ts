@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import videoRoutes from './routes/video.routes';
 import paymentRoutes from './routes/payment.routes';
+import adminRoutes from './routes/admin.routes';
+import resellerRoutes from './routes/reseller.routes';
 import { errorHandler } from './middlewares/error.middleware';
 import { resumeActivePolling } from './controllers/video.controller';
 
@@ -16,6 +18,10 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'https://frontend-zeta-vert-25.vercel.app',
+  'https://ugc.retailstacker.com',
+  'http://ugc.retailstacker.com',
+  'https://chitraai.retailstacker.com',
+  'http://chitraai.retailstacker.com',
   process.env.FRONTEND_URL
 ].filter(Boolean) as string[];
 
@@ -43,6 +49,8 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/videos', videoRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/reseller', resellerRoutes);
 
 // Error Middleware
 app.use(errorHandler);

@@ -13,6 +13,9 @@ interface AuthContextType {
   user: FirebaseUser | null;
   loading: boolean;
   creditsBalance: number;
+  planName: string;
+  planValidity: string;
+  planExpiresAt: string | null;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -21,6 +24,9 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   creditsBalance: 0,
+  planName: 'None',
+  planValidity: 'Lifetime',
+  planExpiresAt: null,
   logout: async () => {},
   refreshProfile: async () => {},
 });
@@ -28,6 +34,9 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [creditsBalance, setCreditsBalance] = useState<number>(0);
+  const [planName, setPlanName] = useState<string>('None');
+  const [planValidity, setPlanValidity] = useState<string>('Lifetime');
+  const [planExpiresAt, setPlanExpiresAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshProfile = async () => {
@@ -35,7 +44,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       // Sync on db
       const syncRes = await api.post('/auth/sync');
-      setCreditsBalance(syncRes.data.user.creditsBalance);
+      const u = syncRes.data.user;
+      setCreditsBalance(u.creditsBalance);
+      setPlanName(u.planName || 'None');
+      setPlanValidity(u.planValidity || 'Lifetime');
+      setPlanExpiresAt(u.planExpiresAt || null);
     } catch (err) {
       console.error('Error syncing profile details:', err);
     }
@@ -48,6 +61,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         await refreshProfile();
       } else {
         setCreditsBalance(0);
+        setPlanName('None');
+        setPlanValidity('Lifetime');
+        setPlanExpiresAt(null);
       }
       setLoading(false);
     });
@@ -59,10 +75,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     await firebaseSignOut(auth);
     setUser(null);
     setCreditsBalance(0);
+    setPlanName('None');
+    setPlanValidity('Lifetime');
+    setPlanExpiresAt(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, creditsBalance, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, creditsBalance, planName, planValidity, planExpiresAt, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
