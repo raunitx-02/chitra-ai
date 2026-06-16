@@ -247,6 +247,8 @@ export default function Dashboard() {
 
   // ── Loading / error ───────────────────────────────────────────────────────
   const [rendering, setRendering] = useState(false);
+  const [creatifyRendering, setCreatifyRendering] = useState(false);
+  const [creatifyConfigured, setCreatifyConfigured] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [error, setError] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -288,10 +290,60 @@ export default function Dashboard() {
   const visibleAvatars = filteredAvatars.slice(0, avatarLimit);
   const visibleVoices = filteredVoices.slice(0, voiceLimit);
 
-  // ── Effects ───────────────────────────────────────────────────────────────
+  // ── Redirect unauthorized users ───────────────────────────────────────────
   useEffect(() => {
     if (!authLoading && !user) router.push('/login');
   }, [user, authLoading]);
+
+  // ── Creatify avatars (check if API is configured) ────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    api.get('/product/creatify-avatars')
+      .then(res => setCreatifyConfigured(res.data.configured === true))
+      .catch(() => setCreatifyConfigured(false));
+  }, [user]);
+
+  // ── Generate product ad via Creatify ─────────────────────────────────────
+  const handleGenerateProductAd = async () => {
+    if (!productImageBase64) { setError('Please upload a product image first.'); return; }
+    if (!script.trim()) { setError('Please enter an ad script.'); return; }
+    if (creditsBalance < 20) { setError('Insufficient credits.'); return; }
+
+    setCreatifyRendering(true); setError('');
+    setShowProcessingModal(true); setModalStage(0);
+    const stageInterval = setInterval(() => setModalStage(prev => (prev + 1) % modalStages.length), 3000);
+
+    try {
+      await api.post('/product/generate-ad', {
+        imageBase64: productImageBase64,
+        mimeType: productImageMime,
+        script,
+        duration: duration === 'auto' ? 30 : parseInt(duration),
+        aspectRatio: orientation === 'portrait' ? '9:16' : orientation === 'landscape' ? '16:9' : '1:1',
+        language: 'en',
+        productName: productAnalysis?.productName,
+        visualPrompt,
+      });
+      setScript(''); setVisualPrompt('');
+      setProductImageFile(null); setProductImageBase64(''); setProductImagePreview(''); setProductAnalysis(null);
+      mutate(); await refreshProfile();
+      clearInterval(stageInterval);
+      setModalStage(5);
+      setTimeout(() => setShowProcessingModal(false), 3500);
+    } catch (err: any) {
+      clearInterval(stageInterval);
+      setShowProcessingModal(false);
+      const data = err.response?.data;
+      if (data?.needsSetup) {
+        setError('Creatify API not configured. Please add your Creatify API key in admin settings, or use the standard HeyGen mode.');
+      } else {
+        setError(data?.message || 'Product ad generation failed.');
+      }
+    } finally {
+      setCreatifyRendering(false);
+    }
+  };
+
 
   useEffect(() => {
     if (filteredAvatars.length > 0 && !selectedAvatarId) {
@@ -953,20 +1005,77 @@ export default function Dashboard() {
               </div>
             )}
 
+
             {/* ── Submit Button ─────────────────────────────────────────── */}
-            <div className="px-6 pb-6">
-              <button
-                type="submit"
-                disabled={rendering || !script.trim() || creditsBalance < 10}
-                className="w-full bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-brandGreen-dark/20"
-              >
-                {rendering ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting render task...</span></>
-                ) : (
-                  <><Send className="w-4 h-4" /><span>Generate Video (Costs 20 credits)</span></>
-                )}
-              </button>
+            <div className="px-6 pb-6 flex flex-col gap-3">
+
+              {/* Product Ad mode — two generation paths */}
+              {mode === 'product' && productImageBase64 && (
+                <>
+                  {/* Primary: Creatify — avatar physically with product */}
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleGenerateProductAd}
+                      disabled={creatifyRendering || rendering || !script.trim() || creditsBalance < 20}
+                      className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-purple-500/20"
+                    >
+                      {creatifyRendering ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /><span>Creating your product ad...</span></>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>🎬 Create Full Product Ad</span>
+                        </>
+                      )}
+                    </button>
+                    <p className="text-[10px] text-center text-gray-400">
+                      {creatifyConfigured
+                        ? '✨ Avatar physically interacts with your product — perfume, shoes, anything'
+                        : '⚠️ Needs Creatify API key — add in admin settings for this feature'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex-grow h-px bg-black/5" />
+                    <span className="text-[10px] text-gray-300 font-semibold">OR</span>
+                    <div className="flex-grow h-px bg-black/5" />
+                  </div>
+
+                  {/* Secondary: HeyGen — avatar + product as background */}
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="submit"
+                      disabled={rendering || creatifyRendering || !script.trim() || creditsBalance < 20}
+                      className="w-full bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-3 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm"
+                    >
+                      {rendering ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting...</span></>
+                      ) : (
+                        <><Send className="w-4 h-4" /><span>Generate with HeyGen (avatar + product background)</span></>
+                      )}
+                    </button>
+                    <p className="text-[10px] text-center text-gray-400">Avatar speaks your script with product image as background</p>
+                  </div>
+                </>
+              )}
+
+              {/* Standard avatar mode — normal generate button */}
+              {(mode === 'avatar' || !productImageBase64) && (
+                <button
+                  type="submit"
+                  disabled={rendering || !script.trim() || creditsBalance < 10}
+                  className="w-full bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-brandGreen-dark/20"
+                >
+                  {rendering ? (
+                    <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting render task...</span></>
+                  ) : (
+                    <><Send className="w-4 h-4" /><span>Generate Video (Costs 20 credits)</span></>
+                  )}
+                </button>
+              )}
             </div>
+
           </form>
         </div>
       </div>
