@@ -99,6 +99,8 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       mode,               // 'avatar' | 'product'
       productImageBase64, // base64 encoded product image
       productImageMime,   // mime type e.g. 'image/jpeg'
+      hookText,
+      bRollUrl,
     } = req.body;
 
     // Validate required fields based on mode
@@ -134,6 +136,8 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
         voiceId: voiceId || 'none',
         language: language || 'English',
         status: VideoStatus.PENDING,
+        hookText: hookText || null,
+        bRollUrl: bRollUrl || null,
       },
     });
 
@@ -189,6 +193,10 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
           if (productPublicUrl && productPublicUrl.startsWith('http')) {
             // Will be set as background below
             (req as any)._productBgUrl = productPublicUrl;
+            await prisma.video.update({
+              where: { id: video.id },
+              data: { bRollUrl: productPublicUrl },
+            });
           }
 
         } else {
@@ -381,14 +389,20 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
 
         console.log(`[HeyGen Polling] Video completed! URL: ${videoUrl}`);
 
-        await prisma.video.update({
-          where: { id: dbVideoId },
-          data: {
-            status: VideoStatus.COMPLETED,
-            videoUrl,
-            thumbnailUrl,
-          },
-        });
+        const videoRecord = await prisma.video.findUnique({ where: { id: dbVideoId } });
+        const CREATOMATE_API_KEY = process.env.CREATOMATE_API_KEY || '';
+        if (videoRecord && (videoRecord.hookText || videoRecord.bRollUrl) && CREATOMATE_API_KEY) {
+          triggerCreatomateRender(dbVideoId, videoUrl);
+        } else {
+          await prisma.video.update({
+            where: { id: dbVideoId },
+            data: {
+              status: VideoStatus.COMPLETED,
+              videoUrl,
+              thumbnailUrl,
+            },
+          });
+        }
       } else if (status === 'failed') {
         console.log(`[HeyGen Polling] Video failed on HeyGen side.`);
         clearInterval(interval);
@@ -406,6 +420,214 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
   }, 20000); // poll every 20 seconds
 }
 
+// Creatomate Video Composition Helper
+async function triggerCreatomateRender(dbVideoId: string, baseVideoUrl: string) {
+  const CREATOMATE_API_KEY = process.env.CREATOMATE_API_KEY || '';
+  if (!CREATOMATE_API_KEY) {
+    console.error('[Creatomate] API Key not configured.');
+    return;
+  }
+
+  try {
+    const video = await prisma.video.findUnique({ where: { id: dbVideoId } });
+    if (!video) return;
+
+    console.log(`[Creatomate] Starting render composition for Video: ${dbVideoId}`);
+
+    const elements: any[] = [
+      // 1. Base Video layer (HeyGen video)
+      {
+        name: "Main-Video",
+        type: "video",
+        source: baseVideoUrl,
+        width: "100%",
+        height: "100%",
+        x: "50%",
+        y: "50%",
+        track: 1,
+      }
+    ];
+
+    // 2. Persistent Black Header Shape (if hookText is provided)
+    if (video.hookText) {
+      elements.push(
+        {
+          type: "shape",
+          path: "M 0% 0% L 100% 0% L 100% 100% L 0% 100% Z",
+          fill_color: "#000000",
+          width: "100%",
+          height: "120px",
+          x: "50%",
+          y: "60px",
+          track: 2,
+        },
+        {
+          type: "text",
+          text: video.hookText,
+          font_family: "Montserrat",
+          font_weight: "800",
+          fill_color: "#ffffff",
+          font_size: "24px",
+          x: "50%",
+          y: "60px",
+          width: "90%",
+          height: "100px",
+          x_alignment: "center",
+          y_alignment: "center",
+          track: 3,
+        }
+      );
+    }
+
+    // 3. Captions (auto-transcribed captions from the audio)
+    elements.push({
+      type: "text",
+      transcript_source: "Main-Video",
+      transcript_effect: "highlight",
+      fill_color: "#ffffff",
+      font_family: "Montserrat",
+      font_weight: "700",
+      font_size: "26px",
+      x: "50%",
+      y: "80%",
+      width: "85%",
+      x_alignment: "center",
+      y_alignment: "center",
+      background_color: "rgba(0, 80, 180, 0.7)", // Transparent blue background box
+      background_padding: "8px 14px",
+      track: 4,
+    });
+
+    // 4. B-Roll Overlay (if product bRollUrl is provided)
+    if (video.bRollUrl && video.bRollUrl.startsWith('http')) {
+      // Overlay product image/video in the middle: from t=5s to t=11s (duration 6s)
+      elements.push({
+        type: video.bRollUrl.includes('.mp4') ? "video" : "image",
+        source: video.bRollUrl,
+        track: 5,
+        time: 5,         // start at 5s
+        duration: 6,     // show for 6 seconds
+        width: "100%",
+        height: "100%",
+        x: "50%",
+        y: "50%",
+        fit: "cover",
+      });
+    }
+
+    const payload = {
+      output_format: "mp4",
+      width: 720,
+      height: 1280,
+      elements: elements,
+    };
+
+    console.log('[Creatomate] Dispatching render request...');
+    const response = await axios.post(
+      'https://api.creatomate.com/v2/renders',
+      payload,
+      {
+        headers: {
+          'Authorization': `Bearer ${CREATOMATE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000,
+      }
+    );
+
+    const renderId = response.data?.id || response.data?.render_id;
+    if (!renderId) {
+      throw new Error('Creatomate did not return a render ID');
+    }
+
+    console.log(`[Creatomate] Render started: ${renderId}`);
+
+    // Update tracking URL to point to Creatomate render job
+    await prisma.video.update({
+      where: { id: dbVideoId },
+      data: {
+        videoUrl: `creatomate:${renderId}`,
+        status: VideoStatus.PROCESSING,
+      },
+    });
+
+    // Start polling Creatomate status
+    pollCreatomateStatus(dbVideoId, renderId);
+
+  } catch (err: any) {
+    console.error('[Creatomate Error]:', err.response?.data || err.message);
+    // On failure, fall back to showing the original HeyGen video so the user still gets a video!
+    await prisma.video.update({
+      where: { id: dbVideoId },
+      data: {
+        status: VideoStatus.COMPLETED,
+        videoUrl: baseVideoUrl,
+      },
+    });
+  }
+}
+
+async function pollCreatomateStatus(dbVideoId: string, renderId: string) {
+  const maxAttempts = 60; // 5 minutes
+  let attempts = 0;
+  const CREATOMATE_API_KEY = process.env.CREATOMATE_API_KEY || '';
+
+  console.log(`[Creatomate Polling] Starting status polling for Video: ${dbVideoId}, Job: ${renderId}`);
+
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > maxAttempts) {
+      console.log(`[Creatomate Polling] Polling timed out for Video: ${dbVideoId}`);
+      clearInterval(interval);
+      await prisma.video.update({
+        where: { id: dbVideoId },
+        data: { status: VideoStatus.FAILED },
+      });
+      return;
+    }
+
+    try {
+      const response = await axios.get(
+        `https://api.creatomate.com/v2/renders/${renderId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${CREATOMATE_API_KEY}`,
+          },
+        }
+      );
+
+      const status = response.data?.status?.toLowerCase();
+      const videoUrl = response.data?.url;
+      const thumbnailUrl = response.data?.snapshot_url;
+
+      console.log(`[Creatomate Polling] Video: ${dbVideoId}, Attempt: ${attempts}/${maxAttempts}, Status: ${status}`);
+
+      if (status === 'succeeded' || status === 'completed') {
+        clearInterval(interval);
+        console.log(`[Creatomate Polling] Video completed! URL: ${videoUrl}`);
+
+        await prisma.video.update({
+          where: { id: dbVideoId },
+          data: {
+            status: VideoStatus.COMPLETED,
+            videoUrl,
+            thumbnailUrl: thumbnailUrl || undefined,
+          },
+        });
+      } else if (status === 'failed') {
+        console.log(`[Creatomate Polling] Video failed on Creatomate side.`);
+        clearInterval(interval);
+        await prisma.video.update({
+          where: { id: dbVideoId },
+          data: { status: VideoStatus.FAILED },
+        });
+      }
+    } catch (err: any) {
+      console.error('Error polling Creatomate status:', err.response?.data || err.message);
+    }
+  }, 10000); // poll every 10 seconds
+}
+
 // 2. Fetch User Videos: GET /api/videos (Syncs processing state on-the-fly)
 export async function getVideos(req: AuthenticatedRequest, res: Response) {
   try {
@@ -421,48 +643,88 @@ export async function getVideos(req: AuthenticatedRequest, res: Response) {
 
     // On-the-fly status sync for processing videos
     const processingVideos = videos.filter(v => v.status === VideoStatus.PROCESSING);
-    if (processingVideos.length > 0 && HEYGEN_API_KEY) {
+    if (processingVideos.length > 0) {
       let updatedAny = false;
+      const CREATOMATE_API_KEY = process.env.CREATOMATE_API_KEY || '';
       for (const video of processingVideos) {
-        if (video.videoUrl && !video.videoUrl.startsWith('http')) {
-          try {
-            const response = await axios.get(
-              `https://api.heygen.com/v1/video_status.get?video_id=${video.videoUrl}`,
-              {
-                headers: {
-                  'x-api-key': HEYGEN_API_KEY,
-                },
+        if (video.videoUrl) {
+          if (video.videoUrl.startsWith('creatomate:')) {
+            const renderId = video.videoUrl.replace('creatomate:', '');
+            if (CREATOMATE_API_KEY) {
+              try {
+                const response = await axios.get(
+                  `https://api.creatomate.com/v2/renders/${renderId}`,
+                  {
+                    headers: { 'Authorization': `Bearer ${CREATOMATE_API_KEY}` }
+                  }
+                );
+                const status = response.data?.status?.toLowerCase();
+                if (status === 'succeeded' || status === 'completed') {
+                  await prisma.video.update({
+                    where: { id: video.id },
+                    data: {
+                      status: VideoStatus.COMPLETED,
+                      videoUrl: response.data?.url,
+                      thumbnailUrl: response.data?.snapshot_url || undefined,
+                    },
+                  });
+                  updatedAny = true;
+                } else if (status === 'failed') {
+                  await prisma.video.update({
+                    where: { id: video.id },
+                    data: { status: VideoStatus.FAILED },
+                  });
+                  updatedAny = true;
+                }
+              } catch (err: any) {
+                console.error(`[On-The-Fly Sync Creatomate Error] Video: ${video.id}`, err.message);
               }
-            );
-
-            const data = response.data?.data;
-            const status = data?.status;
-            if (status === 'completed') {
-              const liveUrl = data?.video_url;
-              const liveThumb = data?.thumbnail_url;
-              await prisma.video.update({
-                where: { id: video.id },
-                data: {
-                  status: VideoStatus.COMPLETED,
-                  videoUrl: liveUrl,
-                  thumbnailUrl: liveThumb,
-                },
-              });
-              updatedAny = true;
-              console.log(`[On-The-Fly Sync] Video ${video.id} updated to COMPLETED.`);
-            } else if (status === 'failed') {
-              await prisma.video.update({
-                where: { id: video.id },
-                data: {
-                  status: VideoStatus.FAILED,
-                  videoUrl: null,
-                },
-              });
-              updatedAny = true;
-              console.log(`[On-The-Fly Sync] Video ${video.id} updated to FAILED.`);
             }
-          } catch (err) {
-            console.error(`[On-The-Fly Sync Error] Video: ${video.id}`, err);
+          } else if (!video.videoUrl.startsWith('http') && HEYGEN_API_KEY) {
+            try {
+              const response = await axios.get(
+                `https://api.heygen.com/v1/video_status.get?video_id=${video.videoUrl}`,
+                {
+                  headers: {
+                    'x-api-key': HEYGEN_API_KEY,
+                  },
+                }
+              );
+
+              const data = response.data?.data;
+              const status = data?.status;
+              if (status === 'completed') {
+                const liveUrl = data?.video_url;
+                const liveThumb = data?.thumbnail_url;
+                const videoRecord = await prisma.video.findUnique({ where: { id: video.id } });
+                if (videoRecord && (videoRecord.hookText || videoRecord.bRollUrl) && CREATOMATE_API_KEY) {
+                  triggerCreatomateRender(video.id, liveUrl);
+                } else {
+                  await prisma.video.update({
+                    where: { id: video.id },
+                    data: {
+                      status: VideoStatus.COMPLETED,
+                      videoUrl: liveUrl,
+                      thumbnailUrl: liveThumb,
+                    },
+                  });
+                }
+                updatedAny = true;
+                console.log(`[On-The-Fly Sync] Video ${video.id} updated to COMPLETED/Creatomate.`);
+              } else if (status === 'failed') {
+                await prisma.video.update({
+                  where: { id: video.id },
+                  data: {
+                    status: VideoStatus.FAILED,
+                    videoUrl: null,
+                  },
+                });
+                updatedAny = true;
+                console.log(`[On-The-Fly Sync] Video ${video.id} updated to FAILED.`);
+              }
+            } catch (err) {
+              console.error(`[On-The-Fly Sync Error] Video: ${video.id}`, err);
+            }
           }
         }
       }
@@ -633,9 +895,15 @@ export async function resumeActivePolling() {
     });
     console.log(`[HeyGen Resume] Found ${processingVideos.length} videos in PROCESSING state to resume polling.`);
     for (const video of processingVideos) {
-      if (video.videoUrl && !video.videoUrl.startsWith('http')) {
-        console.log(`[HeyGen Resume] Resuming status polling loop for Video ID: ${video.id}, HeyGen ID: ${video.videoUrl}`);
-        pollHeyGenStatus(video.id, video.videoUrl);
+      if (video.videoUrl) {
+        if (video.videoUrl.startsWith('creatomate:')) {
+          const renderId = video.videoUrl.replace('creatomate:', '');
+          console.log(`[HeyGen Resume] Resuming status polling loop for Creatomate Video ID: ${video.id}, Render ID: ${renderId}`);
+          pollCreatomateStatus(video.id, renderId);
+        } else if (!video.videoUrl.startsWith('http')) {
+          console.log(`[HeyGen Resume] Resuming status polling loop for HeyGen Video ID: ${video.id}, HeyGen ID: ${video.videoUrl}`);
+          pollHeyGenStatus(video.id, video.videoUrl);
+        }
       }
     }
   } catch (err) {

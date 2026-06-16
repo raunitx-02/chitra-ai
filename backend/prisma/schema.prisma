@@ -60,6 +60,8 @@ model Video {
   language     String
   videoUrl     String?     @map("video_url")
   thumbnailUrl String?     @map("thumbnail_url")
+  hookText     String?     @map("hook_text")
+  bRollUrl     String?     @map("b_roll_url")
   status       VideoStatus @default(PENDING)
   createdAt    DateTime    @default(now()) @map("created_at")
   updatedAt    DateTime    @updatedAt @map("updated_at")

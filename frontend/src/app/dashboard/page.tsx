@@ -220,6 +220,7 @@ export default function Dashboard() {
 
   // ── Script / prompts ──────────────────────────────────────────────────────
   const [script, setScript] = useState('');
+  const [hookText, setHookText] = useState('');
   const [visualPrompt, setVisualPrompt] = useState('');
   const [instructions, setInstructions] = useState('');
 
@@ -437,8 +438,9 @@ export default function Dashboard() {
         mode,
         productImageBase64: mode === 'product' ? productImageBase64 : undefined,
         productImageMime: mode === 'product' ? productImageMime : undefined,
+        hookText: hookText || undefined,
       });
-      setScript(''); setVisualPrompt('');
+      setScript(''); setVisualPrompt(''); setHookText('');
       setProductImageFile(null); setProductImageBase64(''); setProductImagePreview(''); setProductAnalysis(null);
       mutate(); await refreshProfile();
       clearInterval(stageInterval);
@@ -939,6 +941,20 @@ export default function Dashboard() {
                   </button>
                 </div>
               )}
+
+              {/* ── Hook/Top Banner Text ── */}
+              <div className="flex flex-col gap-1.5 mt-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                  <span>✦ Hook / Top Banner Text (Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={hookText}
+                  onChange={e => setHookText(e.target.value)}
+                  placeholder="e.g. PROFESSIONAL VIDEO AD IN 2 MINUTE"
+                  className="bg-gray-50 border border-black/5 rounded-xl px-3 py-2 text-xs text-brandGreen-dark focus:outline-none focus:border-brandGreen transition placeholder:text-gray-300"
+                />
+              </div>
 
               <textarea
                 required
