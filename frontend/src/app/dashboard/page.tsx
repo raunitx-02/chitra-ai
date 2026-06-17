@@ -340,7 +340,7 @@ export default function Dashboard() {
       setShowProcessingModal(false);
       const data = err.response?.data;
       if (data?.needsSetup) {
-        setError('Creatify API not configured. Please add your Creatify API key in admin settings, or use the standard HeyGen mode.');
+        setError('UGC video ad creation API is not configured on the server. Please contact support.');
       } else {
         setError(data?.message || 'Product ad generation failed.');
       }
@@ -1040,55 +1040,37 @@ export default function Dashboard() {
             {/* ── Submit Button ─────────────────────────────────────────── */}
             <div className="px-6 pb-6 flex flex-col gap-3">
 
-              {/* Product Ad mode — two generation paths */}
+              {/* Product Ad mode — single optimized generation button */}
               {mode === 'product' && productImageBase64 && (
-                <>
-                  {/* Primary: Creatify — avatar physically with product */}
-                  <div className="flex flex-col gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleGenerateProductAd}
-                      disabled={creatifyRendering || rendering || !script.trim() || creditsBalance < 20}
-                      className="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-purple-500/20"
-                    >
-                      {creatifyRendering ? (
-                        <><Loader2 className="w-5 h-5 animate-spin" /><span>Creating your product ad...</span></>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          <span>🎬 Create Full Product Ad</span>
-                        </>
-                      )}
-                    </button>
-                    <p className="text-[10px] text-center text-gray-400">
-                      {creatifyConfigured
-                        ? '✨ Avatar physically interacts with your product — perfume, shoes, anything'
-                        : '⚠️ Needs Creatify API key — add in admin settings for this feature'}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="flex-grow h-px bg-black/5" />
-                    <span className="text-[10px] text-gray-300 font-semibold">OR</span>
-                    <div className="flex-grow h-px bg-black/5" />
-                  </div>
-
-                  {/* Secondary: HeyGen — avatar + product as background */}
-                  <div className="flex flex-col gap-1.5">
-                    <button
-                      type="submit"
-                      disabled={rendering || creatifyRendering || !script.trim() || creditsBalance < 20}
-                      className="w-full bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-3 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm"
-                    >
-                      {rendering ? (
-                        <><Loader2 className="w-5 h-5 animate-spin" /><span>Submitting...</span></>
-                      ) : (
-                        <><Send className="w-4 h-4" /><span>Generate with HeyGen (avatar + product background)</span></>
-                      )}
-                    </button>
-                    <p className="text-[10px] text-center text-gray-400">Avatar speaks your script with product image as background</p>
-                  </div>
-                </>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      if (creatifyConfigured) {
+                        await handleGenerateProductAd();
+                      } else {
+                        await handleGenerate(e);
+                      }
+                    }}
+                    disabled={creatifyRendering || rendering || !script.trim() || creditsBalance < 20}
+                    className="w-full bg-brandGreen-dark hover:bg-[#0E4A27] disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-brandGreen-dark/20"
+                  >
+                    {creatifyRendering || rendering ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /><span>Creating your product ad...</span></>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Create Product Ad</span>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[10px] text-center text-gray-400">
+                    {creatifyConfigured
+                      ? '✨ Avatar interacts with your product in a 3D-like setting'
+                      : '✨ Avatar presents your product using the image as background'}
+                  </p>
+                </div>
               )}
 
               {/* Standard avatar mode — normal generate button */}
@@ -1188,18 +1170,10 @@ export default function Dashboard() {
             {/* Header */}
             <div className="p-6 border-b border-black/5 flex items-start justify-between flex-shrink-0">
               <div>
-                <h3 className="text-lg font-bold text-brandGreen-dark">Create a video using Avatar V</h3>
-                <p className="text-xs text-gray-400 mt-0.5">HeyGen's newest and best-quality Avatar model</p>
+                <h3 className="text-lg font-bold text-brandGreen-dark">Select Avatar</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Select from our newest and best-quality Avatar models</p>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href="https://app.heygen.com/avatars"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-bold text-white bg-brandGreen hover:bg-brandGreen-dark px-3 py-2 rounded-xl flex items-center gap-1.5 transition"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Create Avatar <ExternalLink className="w-3 h-3 opacity-70" />
-                </a>
                 <button onClick={() => setShowAvatarModal(false)} className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
                   <X className="w-5 h-5" />
                 </button>
@@ -1265,7 +1239,7 @@ export default function Dashboard() {
                   <span className="text-sm">Loading avatars...</span>
                 </div>
               ) : avatarsErr ? (
-                <div className="text-center py-16 text-red-500 text-sm">Failed to load avatars from HeyGen.</div>
+                <div className="text-center py-16 text-red-500 text-sm">Failed to load avatars. Please try again.</div>
               ) : avatarTab === 'My Avatars' ? (
                 <div className="text-center py-16 flex flex-col items-center gap-4">
                   <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
@@ -1273,11 +1247,8 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-gray-600">No custom avatars yet</p>
-                    <p className="text-xs text-gray-400 mt-1">Create your own avatar on HeyGen platform</p>
+                    <p className="text-xs text-gray-400 mt-1">Please contact support to record and create your own custom avatar.</p>
                   </div>
-                  <a href="https://app.heygen.com/avatars" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-bold text-white bg-brandGreen hover:bg-brandGreen-dark px-4 py-2 rounded-xl transition">
-                    <Plus className="w-3.5 h-3.5" /> Create Avatar on HeyGen <ExternalLink className="w-3 h-3" />
-                  </a>
                 </div>
               ) : (
                 <div className={avatarViewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 gap-4' : 'flex flex-col gap-3'}>
