@@ -58,6 +58,15 @@ const STYLE_CATEGORIES = ['All Styles', 'Retro Tech', 'Iconic Artist', 'Pop Cult
 const AVATAR_TABS = ['Public Avatars', 'Recently Used', 'My Avatars'] as const;
 const AVATAR_CATEGORIES = ['All', 'Professional', 'Lifestyle', 'UGC', 'Community', 'Animated', 'Favorites'] as const;
 
+const ModalBackdrop = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+    onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+  >
+    {children}
+  </div>
+);
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, loading: authLoading, creditsBalance, refreshProfile } = useAuth();
@@ -362,10 +371,14 @@ export default function Dashboard() {
     }
   }, [filteredVoices.length]);
 
-  // Keep voice gender in sync with selected avatar
+  // Keep voice gender in sync with selected avatar ONLY when the avatar changes
+  const lastSelectedAvatarIdRef = useRef('');
   useEffect(() => {
     if (!selectedAvatarId || voices.length === 0) return;
-    const av = avatars.find((a: any) => (a.id || a.avatar_id) === selectedAvatarId);
+    if (selectedAvatarId === lastSelectedAvatarIdRef.current) return;
+    lastSelectedAvatarIdRef.current = selectedAvatarId;
+
+    const av = allAvatars.find((a: any) => (a.id || a.avatar_id) === selectedAvatarId);
     if (av) {
       const avatarGender = av.gender?.toLowerCase() || 'female';
       const currentVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
@@ -377,7 +390,8 @@ export default function Dashboard() {
         }
       }
     }
-  }, [selectedAvatarId, voices, selectedVoiceId]);
+  }, [selectedAvatarId, voices]);
+
 
   useEffect(() => { setAvatarLimit(24); }, [avatarSearch, avatarCategory]);
   useEffect(() => { setVoiceLimit(24); }, [voiceSearch, voiceGender, voiceLanguage]);
@@ -549,16 +563,6 @@ export default function Dashboard() {
   }
 
   const OrientationIcon = ORIENTATIONS.find(o => o.value === orientation)?.icon || Smartphone;
-
-  // ── Shared modal backdrop ─────────────────────────────────────────────────
-  const ModalBackdrop = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      {children}
-    </div>
-  );
 
   // ────────────────────────────────────────────────────────────────────────────
   return (
