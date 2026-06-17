@@ -3,8 +3,97 @@ import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import prisma from '../config/db';
 import axios from 'axios';
 import { VideoStatus } from '@prisma/client';
+import Jimp from 'jimp';
+import fs from 'fs';
+import path from 'path';
 
 const HEYGEN_API_KEY = process.env.HEYGEN_API_KEY || '';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Helper: Remove White Background using Jimp BFS Flood-Fill
+// ──────────────────────────────────────────────────────────────────────────────
+async function removeWhiteBackground(base64: string): Promise<string> {
+  try {
+    const buffer = Buffer.from(base64, 'base64');
+    const image = await Jimp.read(buffer);
+    const width = image.bitmap.width;
+    const height = image.bitmap.height;
+
+    // Start flood fill from the 4 corners
+    const queue: [number, number][] = [
+      [0, 0],
+      [width - 1, 0],
+      [0, height - 1],
+      [width - 1, height - 1]
+    ];
+
+    const visited = new Uint8Array(width * height);
+    for (const [x, y] of queue) {
+      visited[y * width + x] = 1;
+    }
+
+    const isNearWhite = (r: number, g: number, b: number) => {
+      // Threshold: RGB values are all close to white (e.g. > 230)
+      return r > 230 && g > 230 && b > 230;
+    };
+
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      if (!curr) continue;
+      const [cx, cy] = curr;
+
+      const colorIdx = (cy * width + cx) * 4;
+      const r = image.bitmap.data[colorIdx];
+      const g = image.bitmap.data[colorIdx + 1];
+      const b = image.bitmap.data[colorIdx + 2];
+      const a = image.bitmap.data[colorIdx + 3];
+
+      if (a === 0 || isNearWhite(r, g, b)) {
+        // Make transparent
+        image.bitmap.data[colorIdx + 3] = 0;
+
+        const neighbors = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1]
+        ];
+
+        for (const [nx, ny] of neighbors) {
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const idx = ny * width + nx;
+            if (visited[idx] === 0) {
+              visited[idx] = 1;
+              queue.push([nx, ny]);
+            }
+          }
+        }
+      }
+    }
+
+    const outBuffer = await image.getBufferAsync(Jimp.MIME_PNG);
+    return outBuffer.toString('base64');
+  } catch (err: any) {
+    console.error('[Background Removal] Jimp processing failed:', err.message);
+    return base64;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Helper: Save Base64 to local uploads folder and return public URL
+// ──────────────────────────────────────────────────────────────────────────────
+function saveBase64Image(base64Data: string, filename: string): string {
+  const uploadsDir = path.join(__dirname, '../uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  const filePath = path.join(uploadsDir, filename);
+  const buffer = Buffer.from(base64Data, 'base64');
+  fs.writeFileSync(filePath, buffer);
+
+  const backendBaseUrl = process.env.BACKEND_PUBLIC_URL || 'https://ugc.retailstacker.com/api';
+  return `${backendBaseUrl}/uploads/${filename}`;
+}
 
 // In-memory caching for HeyGen assets
 let cachedAvatars: any = null;
@@ -160,39 +249,31 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
 
 
         if (mode === 'product') {
-          // Upload base64 image to ImgBB to get a public URL for HeyGen
+          console.log('[Product Mode] Processing image with background removal...');
           let productPublicUrl = '';
           try {
-            const FormData = require('form-data');
-            const imgbbRes = await axios.post(
-              'https://api.imgbb.com/1/upload',
-              new URLSearchParams({
-                key: process.env.IMGBB_API_KEY || 'a4dc406e0a1def39a6fd18cda9ef6a64',
-                image: productImageBase64,
-                expiration: '0', // never expire
-              }),
-              { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-            );
-            productPublicUrl = imgbbRes.data?.data?.url || imgbbRes.data?.data?.display_url || '';
-            console.log(`[Product Upload] Uploaded to ImgBB: ${productPublicUrl}`);
-          } catch (uploadErr: any) {
-            console.error('[Product Upload] ImgBB upload failed:', uploadErr.message);
-            // Fallback: use a data URL directly if ImgBB fails
-            productPublicUrl = `data:${productImageMime};base64,${productImageBase64}`;
+            // Remove background locally using Jimp BFS
+            const transparentBase64 = await removeWhiteBackground(productImageBase64);
+            // Save locally to public static directory
+            const filename = `${video.id}_product.png`;
+            productPublicUrl = saveBase64Image(transparentBase64, filename);
+            console.log(`[Product Mode] Transparent product image saved: ${productPublicUrl}`);
+          } catch (procErr: any) {
+            console.error('[Product Mode] Local image processing failed:', procErr.message);
+            // Fallback: save original image locally
+            const filename = `${video.id}_product_orig.png`;
+            productPublicUrl = saveBase64Image(productImageBase64, filename);
           }
 
-          // For product mode: use a default avatar that presents the product
-          // The product image will be set as the background
+          // Use selected avatar or default
           characterInput = {
             type: 'avatar',
-            avatar_id: avatarId || 'Daisy-inskirt-20220818', // Use selected avatar or default
+            avatar_id: avatarId || 'Daisy-inskirt-20220818',
             avatar_style: 'normal',
           };
 
-          // Use the product image as background (overridden below if visualPrompt also provided)
-          if (productPublicUrl && productPublicUrl.startsWith('http')) {
-            // Will be set as background below
-            (req as any)._productBgUrl = productPublicUrl;
+          // Save product URL to database for Creatomate overlay (do NOT set as HeyGen background)
+          if (productPublicUrl) {
             await prisma.video.update({
               where: { id: video.id },
               data: { bRollUrl: productPublicUrl },
@@ -498,21 +579,50 @@ async function triggerCreatomateRender(dbVideoId: string, baseVideoUrl: string) 
       track: 4,
     });
 
-    // 4. B-Roll Overlay (if product bRollUrl is provided)
+    // 4. B-Roll Overlay / Product Image (if product bRollUrl is provided)
     if (video.bRollUrl && video.bRollUrl.startsWith('http')) {
-      // Overlay product image/video in the middle: from t=5s to t=11s (duration 6s)
-      elements.push({
-        type: video.bRollUrl.includes('.mp4') ? "video" : "image",
-        source: video.bRollUrl,
-        track: 5,
-        time: 5,         // start at 5s
-        duration: 6,     // show for 6 seconds
-        width: "100%",
-        height: "100%",
-        x: "50%",
-        y: "50%",
-        fit: "cover",
-      });
+      const isVideo = video.bRollUrl.includes('.mp4');
+      if (isVideo) {
+        elements.push({
+          type: "video",
+          source: video.bRollUrl,
+          track: 5,
+          time: 5,
+          duration: 6,
+          width: "100%",
+          height: "100%",
+          x: "50%",
+          y: "50%",
+          fit: "cover",
+        });
+      } else {
+        elements.push({
+          type: "image",
+          source: video.bRollUrl,
+          track: 5,
+          time: 3,
+          duration: 25,
+          width: "45%",
+          height: "45%",
+          x: "75%",
+          y: "45%",
+          fit: "contain",
+          animations: [
+            {
+              type: "slide-in",
+              direction: "right",
+              duration: 1.0,
+              easing: "cubic-out",
+            },
+            {
+              type: "shake",
+              duration: 8.0,
+              loop: true,
+              easing: "linear",
+            },
+          ],
+        });
+      }
     }
 
     const payload = {

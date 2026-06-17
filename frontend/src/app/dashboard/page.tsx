@@ -362,6 +362,23 @@ export default function Dashboard() {
     }
   }, [filteredVoices.length]);
 
+  // Keep voice gender in sync with selected avatar
+  useEffect(() => {
+    if (!selectedAvatarId || voices.length === 0) return;
+    const av = avatars.find((a: any) => (a.id || a.avatar_id) === selectedAvatarId);
+    if (av) {
+      const avatarGender = av.gender?.toLowerCase() || 'female';
+      const currentVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
+      if (!currentVoice || currentVoice.gender?.toLowerCase() !== avatarGender) {
+        // Find the first voice of the matching gender
+        const matchingVoice = voices.find((v: any) => v.gender?.toLowerCase() === avatarGender);
+        if (matchingVoice) {
+          setSelectedVoiceId(matchingVoice.voice_id);
+        }
+      }
+    }
+  }, [selectedAvatarId, voices, selectedVoiceId]);
+
   useEffect(() => { setAvatarLimit(24); }, [avatarSearch, avatarCategory]);
   useEffect(() => { setVoiceLimit(24); }, [voiceSearch, voiceGender, voiceLanguage]);
 
@@ -983,7 +1000,7 @@ export default function Dashboard() {
 
             {/* ── Bottom Action Pills ────────────────────────────────────── */}
             <div className="px-6 pb-4 flex flex-wrap gap-2">
-              {mode === 'avatar' && (
+              {(mode === 'avatar' || mode === 'product') && (
                 <>
                   <button type="button" onClick={() => setShowAvatarModal(true)}
                     className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-black/8 rounded-xl text-xs font-semibold text-gray-600 hover:border-brandGreen/40 hover:text-brandGreen-dark hover:bg-brandGreen/5 transition">
