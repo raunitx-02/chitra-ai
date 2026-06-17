@@ -1339,16 +1339,27 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
       console.error('V2 Avatars fetch failed:', err.message);
     }
 
-    // Fetch V3 avatars
+    // Fetch V3 avatars with full pagination
     let v3Avatars: any[] = [];
     try {
-      const v3Response = await axios.get('https://api.heygen.com/v3/avatars', {
-        headers: { 'x-api-key': HEYGEN_API_KEY }
-      });
-      const data = v3Response.data;
-      if (Array.isArray(data)) v3Avatars = data;
-      else if (data.data && Array.isArray(data.data.avatars)) v3Avatars = data.data.avatars;
-      else if (data.data && Array.isArray(data.data)) v3Avatars = data.data;
+      let hasMore = true;
+      let nextToken = '';
+      let pagesFetched = 0;
+      // Safety limit at 100 pages (2000 avatars) to prevent infinite loops
+      while (hasMore && pagesFetched < 100) {
+        const url = 'https://api.heygen.com/v3/avatars' + (nextToken ? '?token=' + encodeURIComponent(nextToken) : '');
+        const v3Response = await axios.get(url, {
+          headers: { 'x-api-key': HEYGEN_API_KEY }
+        });
+        const data = v3Response.data;
+        const pageList = data.data?.avatars || data.data || [];
+        if (pageList.length === 0) break;
+        v3Avatars = v3Avatars.concat(pageList);
+        nextToken = data.next_token || data.data?.next_token || '';
+        hasMore = !!nextToken;
+        pagesFetched++;
+      }
+      console.log(`[HeyGen API Cache] Successfully fetched ${v3Avatars.length} avatars across ${pagesFetched} V3 pages.`);
     } catch (err: any) {
       console.error('V3 Avatars fetch failed:', err.message);
     }
@@ -1435,16 +1446,27 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
       console.error('V2 Voices fetch failed:', err.message);
     }
 
-    // Fetch V3 voices
+    // Fetch V3 voices with full pagination
     let v3Voices: any[] = [];
     try {
-      const v3Response = await axios.get('https://api.heygen.com/v3/voices', {
-        headers: { 'x-api-key': HEYGEN_API_KEY }
-      });
-      const data = v3Response.data;
-      if (Array.isArray(data)) v3Voices = data;
-      else if (data.data && Array.isArray(data.data.voices)) v3Voices = data.data.voices;
-      else if (data.data && Array.isArray(data.data)) v3Voices = data.data;
+      let hasMore = true;
+      let nextToken = '';
+      let pagesFetched = 0;
+      // Safety limit at 100 pages
+      while (hasMore && pagesFetched < 100) {
+        const url = 'https://api.heygen.com/v3/voices' + (nextToken ? '?token=' + encodeURIComponent(nextToken) : '');
+        const v3Response = await axios.get(url, {
+          headers: { 'x-api-key': HEYGEN_API_KEY }
+        });
+        const data = v3Response.data;
+        const pageList = data.data?.voices || data.data || [];
+        if (pageList.length === 0) break;
+        v3Voices = v3Voices.concat(pageList);
+        nextToken = data.next_token || data.data?.next_token || '';
+        hasMore = !!nextToken;
+        pagesFetched++;
+      }
+      console.log(`[HeyGen API Cache] Successfully fetched ${v3Voices.length} voices across ${pagesFetched} V3 pages.`);
     } catch (err: any) {
       console.error('V3 Voices fetch failed:', err.message);
     }
