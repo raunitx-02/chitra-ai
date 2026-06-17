@@ -1294,6 +1294,16 @@ export async function generateScript(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+// Helper to guess gender from avatar name if not provided (common in V3)
+function guessGender(name: string): string {
+  const lower = (name || '').toLowerCase();
+  const maleNames = ['arjun', 'kabir', 'rohan', 'brian', 'chill brian', 'jack', 'peter', 'aditya', 'rahul', 'amit', 'sanjay', 'vihaan', 'sai', 'ram', 'krishna'];
+  const femaleNames = ['aisha', 'priya', 'abigail', 'ivy', 'sophia', 'jenny', 'cassidy', 'anna', 'sara', 'ananya', 'diya', 'riya', 'sneha', 'neha', 'pooja'];
+  if (maleNames.some(m => lower.includes(m))) return 'male';
+  if (femaleNames.some(f => lower.includes(f))) return 'female';
+  return 'neutral';
+}
+
 // 4. Fetch HeyGen Avatars: GET /api/videos/avatars
 export async function getAvatars(req: AuthenticatedRequest, res: Response) {
   try {
@@ -1312,17 +1322,79 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
       return res.status(200).json(cachedAvatars);
     }
 
-    console.log('[HeyGen API Cache] Cache miss, fetching avatars from API...');
-    const response = await axios.get('https://api.heygen.com/v2/avatars', {
-      headers: {
-        'x-api-key': HEYGEN_API_KEY,
-      }
-    });
+    console.log('[HeyGen API Cache] Cache miss, fetching avatars from V2 and V3 APIs...');
+    
+    // Fetch V2 avatars
+    let v2Avatars: any[] = [];
+    try {
+      const v2Response = await axios.get('https://api.heygen.com/v2/avatars', {
+        headers: { 'x-api-key': HEYGEN_API_KEY }
+      });
+      const data = v2Response.data;
+      if (Array.isArray(data)) v2Avatars = data;
+      else if (data.data && Array.isArray(data.data.avatars)) v2Avatars = data.data.avatars;
+      else if (data.data && Array.isArray(data.data.looks)) v2Avatars = data.data.looks;
+      else if (data.data && Array.isArray(data.data)) v2Avatars = data.data;
+    } catch (err: any) {
+      console.error('V2 Avatars fetch failed:', err.message);
+    }
 
-    cachedAvatars = response.data;
+    // Fetch V3 avatars
+    let v3Avatars: any[] = [];
+    try {
+      const v3Response = await axios.get('https://api.heygen.com/v3/avatars', {
+        headers: { 'x-api-key': HEYGEN_API_KEY }
+      });
+      const data = v3Response.data;
+      if (Array.isArray(data)) v3Avatars = data;
+      else if (data.data && Array.isArray(data.data.avatars)) v3Avatars = data.data.avatars;
+      else if (data.data && Array.isArray(data.data)) v3Avatars = data.data;
+    } catch (err: any) {
+      console.error('V3 Avatars fetch failed:', err.message);
+    }
+
+    // Normalize and merge uniquely by avatar_id
+    const seen = new Set<string>();
+    const mergedList: any[] = [];
+
+    // Process V2 avatars
+    for (const av of v2Avatars) {
+      const avId = av.avatar_id || av.id;
+      if (!avId || seen.has(avId)) continue;
+      seen.add(avId);
+      mergedList.push({
+        avatar_id: avId,
+        avatar_name: av.avatar_name || av.name || 'Unnamed',
+        gender: av.gender || guessGender(av.avatar_name || av.name),
+        preview_image_url: av.preview_image_url || '',
+        preview_video_url: av.preview_video_url || '',
+        premium: av.premium || false,
+        type: av.type || 'studio',
+        tags: av.tags || []
+      });
+    }
+
+    // Process V3 avatars (talking photos, etc.)
+    for (const av of v3Avatars) {
+      const avId = av.id || av.avatar_id;
+      if (!avId || seen.has(avId)) continue;
+      seen.add(avId);
+      mergedList.push({
+        avatar_id: avId,
+        avatar_name: av.name || av.avatar_name || 'Unnamed',
+        gender: av.gender || guessGender(av.name || av.avatar_name),
+        preview_image_url: av.preview_image_url || '',
+        preview_video_url: av.preview_video_url || '',
+        premium: av.premium || false,
+        type: av.type || 'talking_photo',
+        tags: av.tags || []
+      });
+    }
+
+    cachedAvatars = { data: { avatars: mergedList } };
     cachedAvatarsTime = now;
 
-    return res.status(200).json(response.data);
+    return res.status(200).json(cachedAvatars);
   } catch (error: any) {
     console.error('Error fetching HeyGen avatars:', error.response?.data || error.message);
     return res.status(500).json({ message: error.response?.data?.message || 'Error fetching avatars from HeyGen' });
@@ -1347,17 +1419,79 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
       return res.status(200).json(cachedVoices);
     }
 
-    console.log('[HeyGen API Cache] Cache miss, fetching voices from API...');
-    const response = await axios.get('https://api.heygen.com/v2/voices', {
-      headers: {
-        'x-api-key': HEYGEN_API_KEY,
-      }
-    });
+    console.log('[HeyGen API Cache] Cache miss, fetching voices from V2 and V3 APIs...');
 
-    cachedVoices = response.data;
+    // Fetch V2 voices
+    let v2Voices: any[] = [];
+    try {
+      const v2Response = await axios.get('https://api.heygen.com/v2/voices', {
+        headers: { 'x-api-key': HEYGEN_API_KEY }
+      });
+      const data = v2Response.data;
+      if (Array.isArray(data)) v2Voices = data;
+      else if (data.data && Array.isArray(data.data.voices)) v2Voices = data.data.voices;
+      else if (data.data && Array.isArray(data.data)) v2Voices = data.data;
+    } catch (err: any) {
+      console.error('V2 Voices fetch failed:', err.message);
+    }
+
+    // Fetch V3 voices
+    let v3Voices: any[] = [];
+    try {
+      const v3Response = await axios.get('https://api.heygen.com/v3/voices', {
+        headers: { 'x-api-key': HEYGEN_API_KEY }
+      });
+      const data = v3Response.data;
+      if (Array.isArray(data)) v3Voices = data;
+      else if (data.data && Array.isArray(data.data.voices)) v3Voices = data.data.voices;
+      else if (data.data && Array.isArray(data.data)) v3Voices = data.data;
+    } catch (err: any) {
+      console.error('V3 Voices fetch failed:', err.message);
+    }
+
+    const seen = new Set<string>();
+    const mergedList: any[] = [];
+
+    // Process V2 voices
+    for (const v of v2Voices) {
+      const vId = v.voice_id;
+      if (!vId || seen.has(vId)) continue;
+      seen.add(vId);
+      mergedList.push({
+        voice_id: vId,
+        name: v.name || 'Unnamed Voice',
+        gender: v.gender || 'neutral',
+        language: v.language || 'English',
+        preview_audio: v.preview_audio || v.preview_audio_url || '',
+        support_pause: v.support_pause || false,
+        emotion_support: v.emotion_support || false,
+        support_interactive_avatar: v.support_interactive_avatar || false,
+        support_locale: v.support_locale || false
+      });
+    }
+
+    // Process V3 voices
+    for (const v of v3Voices) {
+      const vId = v.voice_id;
+      if (!vId || seen.has(vId)) continue;
+      seen.add(vId);
+      mergedList.push({
+        voice_id: vId,
+        name: v.name || 'Unnamed Voice',
+        gender: v.gender || 'neutral',
+        language: v.language || 'English',
+        preview_audio: v.preview_audio_url || v.preview_audio || '',
+        support_pause: v.support_pause || false,
+        emotion_support: v.emotion_support || false,
+        support_interactive_avatar: v.support_interactive_avatar || false,
+        support_locale: v.support_locale || false
+      });
+    }
+
+    cachedVoices = { data: { voices: mergedList } };
     cachedVoicesTime = now;
 
-    return res.status(200).json(response.data);
+    return res.status(200).json(cachedVoices);
   } catch (error: any) {
     console.error('Error fetching HeyGen voices:', error.response?.data || error.message);
     return res.status(500).json({ message: error.response?.data?.message || 'Error fetching voices from HeyGen' });
