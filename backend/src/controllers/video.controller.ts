@@ -1742,6 +1742,30 @@ export async function getStyles(req: AuthenticatedRequest, res: Response) {
 // 7. Resume active polling for unprocessed jobs (Server restart recovery)
 export async function resumeActivePolling() {
   try {
+    // Warm up/revalidate cache in the background on startup
+    console.log('[HeyGen Startup] Checking if avatar/voice caches need warming...');
+    const diskAvatars = loadCacheFromDisk('cached_avatars.json');
+    const diskVoices = loadCacheFromDisk('cached_voices.json');
+    const now = Date.now();
+
+    if (!diskAvatars || (now - diskAvatars.timestamp >= CACHE_TTL)) {
+      console.log('[HeyGen Startup] Avatar cache is missing or expired. Warming up in background...');
+      refreshAvatarsBackground();
+    } else {
+      cachedAvatars = diskAvatars.data;
+      cachedAvatarsTime = diskAvatars.timestamp;
+      console.log('[HeyGen Startup] Avatar cache loaded successfully from disk.');
+    }
+
+    if (!diskVoices || (now - diskVoices.timestamp >= CACHE_TTL)) {
+      console.log('[HeyGen Startup] Voice cache is missing or expired. Warming up in background...');
+      refreshVoicesBackground();
+    } else {
+      cachedVoices = diskVoices.data;
+      cachedVoicesTime = diskVoices.timestamp;
+      console.log('[HeyGen Startup] Voice cache loaded successfully from disk.');
+    }
+
     const processingVideos = await prisma.video.findMany({
       where: { status: VideoStatus.PROCESSING },
     });
