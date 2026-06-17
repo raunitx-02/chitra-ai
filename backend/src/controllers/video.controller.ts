@@ -1233,6 +1233,50 @@ export async function getVideos(req: AuthenticatedRequest, res: Response) {
                 console.error(`[On-The-Fly Sync Creatomate Error] Video: ${video.id}`, err.message);
               }
             }
+          } else if (video.videoUrl.startsWith('session_') && HEYGEN_API_KEY) {
+            try {
+              const realSessionId = video.videoUrl.replace('session_', '');
+              const response = await axios.get(
+                `https://api.heygen.com/v3/video-agents/${realSessionId}`,
+                {
+                  headers: {
+                    'x-api-key': HEYGEN_API_KEY,
+                  },
+                }
+              );
+
+              const sessionData = response.data?.data;
+              const sessionStatus = sessionData?.status;
+              const finalVideoId = sessionData?.video_id;
+
+              if (sessionStatus === 'failed') {
+                await prisma.video.update({
+                  where: { id: video.id },
+                  data: {
+                    status: VideoStatus.FAILED,
+                    videoUrl: null,
+                  },
+                });
+                // Refund credits
+                await prisma.user.update({
+                  where: { id: video.userId },
+                  data: { creditsBalance: { increment: 20 } },
+                });
+                updatedAny = true;
+                console.log(`[On-The-Fly Sync Session] Video ${video.id} failed.`);
+              } else if (finalVideoId) {
+                await prisma.video.update({
+                  where: { id: video.id },
+                  data: {
+                    videoUrl: finalVideoId,
+                  },
+                });
+                updatedAny = true;
+                console.log(`[On-The-Fly Sync Session] Video ${video.id} found Video ID ${finalVideoId}.`);
+              }
+            } catch (err: any) {
+              console.error(`[On-The-Fly Sync Session Error] Video: ${video.id}`, err.message);
+            }
           } else if (!video.videoUrl.startsWith('http') && HEYGEN_API_KEY) {
             try {
               const response = await axios.get(
