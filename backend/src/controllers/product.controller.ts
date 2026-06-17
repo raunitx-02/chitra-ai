@@ -21,7 +21,7 @@ Return ONLY a JSON object (no markdown, no code fences, just pure JSON) with the
   "tagline": "Punchy memorable tagline max 8 words"
 }`;
 
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
   let lastError: any = null;
 
   for (const model of models) {
