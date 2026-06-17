@@ -316,9 +316,9 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
             }
           );
 
-          heygenVideoId = response.data?.data?.session_id;
+          heygenVideoId = 'session_' + response.data?.data?.session_id;
 
-          if (!heygenVideoId) {
+          if (!heygenVideoId || heygenVideoId === 'session_undefined') {
             throw new Error('HeyGen did not return a session_id. Response: ' + JSON.stringify(response.data));
           }
 
@@ -481,9 +481,10 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
     }
 
     try {
-      if (heygenVideoId.startsWith('sess_')) {
+      if (heygenVideoId.startsWith('session_')) {
+        const realSessionId = heygenVideoId.replace('session_', '');
         const response = await axios.get(
-          `https://api.heygen.com/v3/video-agents/${heygenVideoId}`,
+          `https://api.heygen.com/v3/video-agents/${realSessionId}`,
           {
             headers: {
               'x-api-key': HEYGEN_API_KEY,
