@@ -1297,11 +1297,18 @@ export async function generateScript(req: AuthenticatedRequest, res: Response) {
 // Helper to guess gender from avatar name if not provided (common in V3)
 function guessGender(name: string): string {
   const lower = (name || '').toLowerCase();
-  const maleNames = ['arjun', 'kabir', 'rohan', 'brian', 'chill brian', 'jack', 'peter', 'aditya', 'rahul', 'amit', 'sanjay', 'vihaan', 'sai', 'ram', 'krishna'];
-  const femaleNames = ['aisha', 'priya', 'abigail', 'ivy', 'sophia', 'jenny', 'cassidy', 'anna', 'sara', 'ananya', 'diya', 'riya', 'sneha', 'neha', 'pooja'];
+  const maleNames = ['arjun', 'kabir', 'rohan', 'brian', 'chill brian', 'jack', 'peter', 'aditya', 'rahul', 'amit', 'sanjay', 'vihaan', 'sai', 'ram', 'krishna', 'declan', 'sevik', 'zayne'];
+  const femaleNames = ['aisha', 'priya', 'abigail', 'ivy', 'sophia', 'jenny', 'kristen', 'cassidy', 'anna', 'sara', 'ananya', 'diya', 'riya', 'sneha', 'neha', 'pooja'];
   if (maleNames.some(m => lower.includes(m))) return 'male';
   if (femaleNames.some(f => lower.includes(f))) return 'female';
   return 'neutral';
+}
+
+function mapGender(genderStr: string): string {
+  const g = (genderStr || '').toLowerCase();
+  if (g === 'man') return 'male';
+  if (g === 'woman') return 'female';
+  return guessGender(genderStr);
 }
 
 // 4. Fetch HeyGen Avatars: GET /api/videos/avatars
@@ -1322,9 +1329,9 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
       return res.status(200).json(cachedAvatars);
     }
 
-    console.log('[HeyGen API Cache] Cache miss, fetching avatars from V2 and V3 APIs...');
+    console.log('[HeyGen API Cache] Cache miss, fetching avatars, groups, and looks...');
     
-    // Fetch V2 avatars
+    // 1. Fetch V2 avatars
     let v2Avatars: any[] = [];
     try {
       const v2Response = await axios.get('https://api.heygen.com/v2/avatars', {
@@ -1339,13 +1346,12 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
       console.error('V2 Avatars fetch failed:', err.message);
     }
 
-    // Fetch V3 avatars with full pagination
-    let v3Avatars: any[] = [];
+    // 2. Fetch V3 Groups (for name/gender lookup)
+    const groupsMap: { [key: string]: any } = {};
     try {
       let hasMore = true;
       let nextToken = '';
       let pagesFetched = 0;
-      // Safety limit at 100 pages (2000 avatars) to prevent infinite loops
       while (hasMore && pagesFetched < 100) {
         const url = 'https://api.heygen.com/v3/avatars' + (nextToken ? '?token=' + encodeURIComponent(nextToken) : '');
         const v3Response = await axios.get(url, {
@@ -1354,14 +1360,40 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
         const data = v3Response.data;
         const pageList = data.data?.avatars || data.data || [];
         if (pageList.length === 0) break;
-        v3Avatars = v3Avatars.concat(pageList);
+        for (const g of pageList) {
+          groupsMap[g.id] = g;
+        }
         nextToken = data.next_token || data.data?.next_token || '';
         hasMore = !!nextToken;
         pagesFetched++;
       }
-      console.log(`[HeyGen API Cache] Successfully fetched ${v3Avatars.length} avatars across ${pagesFetched} V3 pages.`);
+      console.log(`[HeyGen API Cache] Fetched ${Object.keys(groupsMap).length} V3 avatar groups.`);
     } catch (err: any) {
-      console.error('V3 Avatars fetch failed:', err.message);
+      console.error('V3 Groups fetch failed:', err.message);
+    }
+
+    // 3. Fetch V3 Looks
+    let v3Looks: any[] = [];
+    try {
+      let hasMore = true;
+      let nextToken = '';
+      let pagesFetched = 0;
+      while (hasMore && pagesFetched < 150) {
+        const url = 'https://api.heygen.com/v3/avatars/looks' + (nextToken ? '?token=' + encodeURIComponent(nextToken) : '');
+        const v3Response = await axios.get(url, {
+          headers: { 'x-api-key': HEYGEN_API_KEY }
+        });
+        const data = v3Response.data;
+        const pageList = data.data?.looks || data.data || [];
+        if (pageList.length === 0) break;
+        v3Looks = v3Looks.concat(pageList);
+        nextToken = data.next_token || data.data?.next_token || '';
+        hasMore = !!nextToken;
+        pagesFetched++;
+      }
+      console.log(`[HeyGen API Cache] Fetched ${v3Looks.length} V3 avatar looks.`);
+    } catch (err: any) {
+      console.error('V3 Looks fetch failed:', err.message);
     }
 
     // Normalize and merge uniquely by avatar_id
@@ -1385,20 +1417,25 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
       });
     }
 
-    // Process V3 avatars (talking photos, etc.)
-    for (const av of v3Avatars) {
-      const avId = av.id || av.avatar_id;
+    // Process V3 avatar looks mapped to their parent group name & gender
+    for (const look of v3Looks) {
+      const avId = look.id || look.avatar_id;
       if (!avId || seen.has(avId)) continue;
       seen.add(avId);
+
+      const groupObj = groupsMap[look.group_id] || {};
+      const charName = groupObj.name || look.name || 'Unnamed';
+      const charGender = groupObj.gender ? mapGender(groupObj.gender) : guessGender(charName);
+      
       mergedList.push({
         avatar_id: avId,
-        avatar_name: av.name || av.avatar_name || 'Unnamed',
-        gender: av.gender || guessGender(av.name || av.avatar_name),
-        preview_image_url: av.preview_image_url || '',
-        preview_video_url: av.preview_video_url || '',
-        premium: av.premium || false,
-        type: av.type || 'talking_photo',
-        tags: av.tags || []
+        avatar_name: charName,
+        gender: charGender,
+        preview_image_url: look.preview_image_url || '',
+        preview_video_url: look.preview_video_url || groupObj.preview_video_url || '',
+        premium: look.premium || false,
+        type: look.avatar_type || 'talking_photo',
+        tags: look.tags || []
       });
     }
 
