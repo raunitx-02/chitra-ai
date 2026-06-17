@@ -292,66 +292,93 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
           };
         }
 
-        const sceneInput: any = {
-          character: characterInput,
-          voice: voiceId && voiceId !== 'none' ? {
-            type: 'text',
-            input_text: script,
+        let heygenVideoId = '';
+
+        if (mode !== 'product') {
+          // OPTION A: Integrate HeyGen Video Agent V3 API for full multi-scene dynamic generation
+          const agentPayload = {
+            prompt: script,
+            avatar_id: avatarId,
             voice_id: voiceId,
-          } : {
-            type: 'silence',
-          },
-        };
-
-        // Apply background: product image for product mode, AI-generated for visual prompt
-        const productBgUrl = (req as any)._productBgUrl;
-        if (productBgUrl) {
-          // Product mode: use uploaded product image as video background
-          sceneInput.background = {
-            type: 'image',
-            url: productBgUrl,
+            orientation: orientationVal === 'landscape' ? 'landscape' : 'portrait',
           };
-          console.log(`[HeyGen Render] Applied Product Image as Background: ${productBgUrl}`);
-        } else if (visualPrompt && visualPrompt.trim().length > 0) {
-          const bgPrompt = `${visualPrompt.trim()}, blurred background, photorealistic portrait studio setting, soft bokeh, high resolution`;
-          const generatedBgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(bgPrompt)}?width=${width}&height=${height}&nologo=true`;
-          sceneInput.background = {
-            type: 'image',
-            url: generatedBgUrl,
-          };
-          console.log(`[HeyGen Render] Applied AI Background: ${generatedBgUrl}`);
-        }
 
+          console.log(`[HeyGen Video Agent] Creating session with payload:`, JSON.stringify(agentPayload));
 
-        // Build the request payload
-        const payload: any = {
-          video_inputs: [sceneInput],
-          dimension: { width, height },
-        };
+          const response = await axios.post(
+            'https://api.heygen.com/v3/video-agents',
+            agentPayload,
+            {
+              headers: {
+                'x-api-key': HEYGEN_API_KEY,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
 
-        // Apply duration if not auto
-        if (durationVal > 0) {
-          payload.duration = durationVal;
-        }
+          heygenVideoId = response.data?.data?.session_id;
 
-        const response = await axios.post(
-          'https://api.heygen.com/v2/video/generate',
-          payload,
-          {
-            headers: {
-              'x-api-key': HEYGEN_API_KEY,
-              'Content-Type': 'application/json',
-            },
+          if (!heygenVideoId) {
+            throw new Error('HeyGen did not return a session_id. Response: ' + JSON.stringify(response.data));
           }
-        );
 
-        const heygenVideoId = response.data?.data?.video_id;
+          console.log(`[HeyGen Video Agent] Session created successfully: ${heygenVideoId}`);
+        } else {
+          // Use standard V2 generate endpoint for Product Ad mode (which uses Creatomate overlay afterwards)
+          const sceneInput: any = {
+            character: characterInput,
+            voice: voiceId && voiceId !== 'none' ? {
+              type: 'text',
+              input_text: script,
+              voice_id: voiceId,
+            } : {
+              type: 'silence',
+            },
+          };
 
-        if (!heygenVideoId) {
-          throw new Error('HeyGen did not return a video_id. Response: ' + JSON.stringify(response.data));
+          const productBgUrl = (req as any)._productBgUrl;
+          if (productBgUrl) {
+            sceneInput.background = {
+              type: 'image',
+              url: productBgUrl,
+            };
+          } else if (visualPrompt && visualPrompt.trim().length > 0) {
+            const bgPrompt = `${visualPrompt.trim()}, blurred background, photorealistic portrait studio setting, soft bokeh, high resolution`;
+            const generatedBgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(bgPrompt)}?width=${width}&height=${height}&nologo=true`;
+            sceneInput.background = {
+              type: 'image',
+              url: generatedBgUrl,
+            };
+          }
+
+          const payload: any = {
+            video_inputs: [sceneInput],
+            dimension: { width, height },
+          };
+
+          if (durationVal > 0) {
+            payload.duration = durationVal;
+          }
+
+          const response = await axios.post(
+            'https://api.heygen.com/v2/video/generate',
+            payload,
+            {
+              headers: {
+                'x-api-key': HEYGEN_API_KEY,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          heygenVideoId = response.data?.data?.video_id;
+
+          if (!heygenVideoId) {
+            throw new Error('HeyGen did not return a video_id. Response: ' + JSON.stringify(response.data));
+          }
+
+          console.log(`[HeyGen Render] V2 Job submitted successfully. HeyGen Video ID: ${heygenVideoId}`);
         }
-
-        console.log(`[HeyGen Render] Job submitted successfully. HeyGen Video ID: ${heygenVideoId}`);
 
         // Update video record to PROCESSING
         await prisma.video.update({
@@ -454,6 +481,55 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
     }
 
     try {
+      if (heygenVideoId.startsWith('sess_')) {
+        const response = await axios.get(
+          `https://api.heygen.com/v3/video-agents/${heygenVideoId}`,
+          {
+            headers: {
+              'x-api-key': HEYGEN_API_KEY,
+            },
+          }
+        );
+
+        const sessionData = response.data?.data;
+        const sessionStatus = sessionData?.status;
+        const finalVideoId = sessionData?.video_id;
+
+        console.log(`[HeyGen Video Agent Polling] Session: ${dbVideoId}, Attempt: ${attempts}/${maxAttempts}, Status: ${sessionStatus}, VideoID: ${finalVideoId}`);
+
+        if (sessionStatus === 'failed') {
+          console.log(`[HeyGen Video Agent Polling] Session failed.`);
+          clearInterval(interval);
+          await prisma.video.update({
+            where: { id: dbVideoId },
+            data: {
+              status: VideoStatus.FAILED,
+              videoUrl: null,
+            },
+          });
+          // Refund credits
+          const videoRecord = await prisma.video.findUnique({ where: { id: dbVideoId } });
+          if (videoRecord) {
+            await prisma.user.update({
+              where: { id: videoRecord.userId },
+              data: { creditsBalance: { increment: 20 } },
+            });
+          }
+        } else if (finalVideoId) {
+          console.log(`[HeyGen Video Agent Polling] Found Video ID: ${finalVideoId}. Switching to video polling.`);
+          clearInterval(interval);
+          await prisma.video.update({
+            where: { id: dbVideoId },
+            data: {
+              videoUrl: finalVideoId,
+            },
+          });
+          // Start polling the newly generated video
+          pollHeyGenStatus(dbVideoId, finalVideoId);
+        }
+        return;
+      }
+
       const response = await axios.get(
         `https://api.heygen.com/v1/video_status.get?video_id=${heygenVideoId}`,
         {
