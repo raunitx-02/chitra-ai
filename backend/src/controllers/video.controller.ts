@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import prisma from '../config/db';
 import axios from 'axios';
 import { VideoStatus } from '@prisma/client';
-import Jimp from 'jimp';
+import { Jimp } from 'jimp';
 import fs from 'fs';
 import path from 'path';
 
@@ -71,7 +71,7 @@ async function removeWhiteBackground(base64: string): Promise<string> {
       }
     }
 
-    const outBuffer = await image.getBufferAsync(Jimp.MIME_PNG);
+    const outBuffer = await image.getBuffer('image/png');
     return outBuffer.toString('base64');
   } catch (err: any) {
     console.error('[Background Removal] Jimp processing failed:', err.message);
