@@ -460,6 +460,7 @@ export default function Dashboard() {
         productImageBase64: mode === 'product' ? productImageBase64 : undefined,
         productImageMime: mode === 'product' ? productImageMime : undefined,
         hookText: hookText || undefined,
+        productAnalysis: mode === 'product' ? productAnalysis : undefined,
       });
       setScript(''); setVisualPrompt(''); setHookText('');
       setProductImageFile(null); setProductImageBase64(''); setProductImagePreview(''); setProductAnalysis(null);

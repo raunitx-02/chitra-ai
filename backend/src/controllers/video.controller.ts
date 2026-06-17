@@ -217,10 +217,14 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
     const durationVal = parseInt(duration) || 0; // 0 = auto
 
     // Step 1: Create a PENDING Video record
+    const serializedScript = mode === 'product' && req.body.productAnalysis
+      ? `${script}||METADATA||${JSON.stringify(req.body.productAnalysis)}`
+      : script;
+
     const video = await prisma.video.create({
       data: {
         userId: user.id,
-        script: script || 'product_ad',
+        script: serializedScript || 'product_ad',
         avatarId: avatarId || 'product_mode',
         voiceId: voiceId || 'none',
         language: language || 'English',
@@ -513,6 +517,19 @@ async function triggerCreatomateRender(dbVideoId: string, baseVideoUrl: string) 
     const video = await prisma.video.findUnique({ where: { id: dbVideoId } });
     if (!video) return;
 
+    // Parse product analysis metadata if present
+    let productAnalysis: any = null;
+    let cleanScript = video.script;
+    if (video.script.includes('||METADATA||')) {
+      const parts = video.script.split('||METADATA||');
+      cleanScript = parts[0];
+      try {
+        productAnalysis = JSON.parse(parts[1]);
+      } catch (e) {
+        console.error('[Creatomate] Failed to parse product analysis:', e);
+      }
+    }
+
     console.log(`[Creatomate] Starting render composition for Video: ${dbVideoId}`);
 
     const elements: any[] = [
@@ -595,6 +612,355 @@ async function triggerCreatomateRender(dbVideoId: string, baseVideoUrl: string) 
           y: "50%",
           fit: "cover",
         });
+      } else if (productAnalysis) {
+        // PREMIUM DYNAMIC MULTI-STAGE PRODUCT AD
+        const pName = productAnalysis.productName || 'Our Product';
+        const tagline = productAnalysis.tagline || '';
+        const features = productAnalysis.keyFeatures || [];
+
+        // ────────── STAGE 1: Beautiful Branding Intro (0s to 4.5s) ──────────
+        elements.push({
+          type: "shape",
+          fill_color: "rgba(10, 30, 20, 0.95)", // dark green elegant backing
+          width: "100%",
+          height: "100%",
+          x: "50%",
+          y: "50%",
+          track: 5,
+          time: 0,
+          duration: 4.5,
+          animations: [
+            {
+              type: "fade-out",
+              duration: 0.5,
+            }
+          ]
+        });
+
+        // "INTRODUCING..." Text
+        elements.push({
+          type: "text",
+          text: "INTRODUCING...",
+          font_family: "Montserrat",
+          font_weight: "700",
+          fill_color: "rgba(255, 255, 255, 0.6)",
+          font_size: "16px",
+          x: "30%",
+          y: "32%",
+          width: "50%",
+          x_alignment: "left",
+          track: 6,
+          time: 0.5,
+          duration: 3.5,
+          animations: [
+            {
+              type: "fade-in",
+              duration: 0.5,
+            }
+          ]
+        });
+
+        // Product Title
+        elements.push({
+          type: "text",
+          text: pName.toUpperCase(),
+          font_family: "Montserrat",
+          font_weight: "800",
+          fill_color: "#10b981", // bright emerald green
+          font_size: "30px",
+          x: "30%",
+          y: "42%",
+          width: "50%",
+          x_alignment: "left",
+          track: 7,
+          time: 0.8,
+          duration: 3.2,
+          animations: [
+            {
+              type: "slide-in",
+              direction: "left",
+              duration: 0.8,
+            }
+          ]
+        });
+
+        // Tagline
+        elements.push({
+          type: "text",
+          text: tagline,
+          font_family: "Montserrat",
+          font_style: "italic",
+          fill_color: "#ffffff",
+          font_size: "16px",
+          x: "30%",
+          y: "52%",
+          width: "50%",
+          x_alignment: "left",
+          track: 8,
+          time: 1.1,
+          duration: 2.9,
+          animations: [
+            {
+              type: "fade-in",
+              duration: 0.5,
+            }
+          ]
+        });
+
+        // Intro Product Image
+        elements.push({
+          type: "image",
+          source: video.bRollUrl,
+          track: 9,
+          time: 0.6,
+          duration: 3.4,
+          width: "42%",
+          height: "42%",
+          x: "72%",
+          y: "45%",
+          fit: "contain",
+          animations: [
+            {
+              type: "scale-in",
+              duration: 0.8,
+              easing: "cubic-out",
+            }
+          ]
+        });
+
+        // ────────── STAGE 2: Features Showcase (4.5s to 14.5s) ──────────
+        // Floating smaller product image
+        elements.push({
+          type: "image",
+          source: video.bRollUrl,
+          track: 10,
+          time: 4.5,
+          duration: 10.0,
+          width: "35%",
+          height: "35%",
+          x: "76%",
+          y: "42%",
+          fit: "contain",
+          animations: [
+            {
+              type: "slide-in",
+              direction: "right",
+              duration: 0.8,
+              easing: "cubic-out",
+            },
+            {
+              type: "shake",
+              duration: 5.0,
+              loop: true,
+              easing: "linear",
+            }
+          ]
+        });
+
+        // Features backdrop card
+        elements.push({
+          type: "shape",
+          fill_color: "rgba(0, 0, 0, 0.75)",
+          width: "46%",
+          height: "42%",
+          x: "28%",
+          y: "42%",
+          border_radius: "16px",
+          track: 11,
+          time: 4.5,
+          duration: 10.0,
+          animations: [
+            {
+              type: "slide-in",
+              direction: "left",
+              duration: 0.8,
+            }
+          ]
+        });
+
+        // Features header text
+        elements.push({
+          type: "text",
+          text: "KEY FEATURES",
+          font_family: "Montserrat",
+          font_weight: "800",
+          fill_color: "#10b981",
+          font_size: "16px",
+          x: "28%",
+          y: "27%",
+          width: "40%",
+          x_alignment: "center",
+          track: 12,
+          time: 4.8,
+          duration: 9.7,
+          animations: [{ type: "fade-in", duration: 0.4 }]
+        });
+
+        // Feature line 1
+        if (features[0]) {
+          elements.push({
+            type: "text",
+            text: `✓  ${features[0]}`,
+            font_family: "Montserrat",
+            font_weight: "600",
+            fill_color: "#ffffff",
+            font_size: "13px",
+            x: "28%",
+            y: "35%",
+            width: "40%",
+            x_alignment: "left",
+            track: 13,
+            time: 5.2,
+            duration: 9.3,
+            animations: [{ type: "fade-in", duration: 0.4 }]
+          });
+        }
+
+        // Feature line 2
+        if (features[1]) {
+          elements.push({
+            type: "text",
+            text: `✓  ${features[1]}`,
+            font_family: "Montserrat",
+            font_weight: "600",
+            fill_color: "#ffffff",
+            font_size: "13px",
+            x: "28%",
+            y: "43%",
+            width: "40%",
+            x_alignment: "left",
+            track: 14,
+            time: 5.6,
+            duration: 8.9,
+            animations: [{ type: "fade-in", duration: 0.4 }]
+          });
+        }
+
+        // Feature line 3
+        if (features[2]) {
+          elements.push({
+            type: "text",
+            text: `✓  ${features[2]}`,
+            font_family: "Montserrat",
+            font_weight: "600",
+            fill_color: "#ffffff",
+            font_size: "13px",
+            x: "28%",
+            y: "51%",
+            width: "40%",
+            x_alignment: "left",
+            track: 15,
+            time: 6.0,
+            duration: 8.5,
+            animations: [{ type: "fade-in", duration: 0.4 }]
+          });
+        }
+
+        // ────────── STAGE 3: Call-To-Action (14.5s to end) ──────────
+        // Floating product image at top of CTA
+        elements.push({
+          type: "image",
+          source: video.bRollUrl,
+          track: 16,
+          time: 14.5,
+          duration: 20.0,
+          width: "32%",
+          height: "32%",
+          x: "50%",
+          y: "28%",
+          fit: "contain",
+          animations: [
+            {
+              type: "scale-in",
+              duration: 0.8,
+            },
+            {
+              type: "shake",
+              duration: 8.0,
+              loop: true,
+            }
+          ]
+        });
+
+        // Tagline text
+        elements.push({
+          type: "text",
+          text: tagline.toUpperCase(),
+          font_family: "Montserrat",
+          font_weight: "800",
+          fill_color: "#ffffff",
+          font_size: "18px",
+          x: "50%",
+          y: "45%",
+          width: "80%",
+          x_alignment: "center",
+          track: 17,
+          time: 14.8,
+          duration: 19.7,
+          animations: [{ type: "fade-in", duration: 0.5 }]
+        });
+
+        // Rounded green button
+        elements.push({
+          type: "shape",
+          fill_color: "#10b981",
+          width: "60%",
+          height: "70px",
+          x: "50%",
+          y: "54%",
+          border_radius: "35px",
+          track: 18,
+          time: 15.0,
+          duration: 19.5,
+          animations: [
+            {
+              type: "scale-in",
+              duration: 0.6,
+            },
+            {
+              type: "pulse",
+              duration: 2.0,
+              loop: true,
+            }
+          ]
+        });
+
+        // SHOP NOW button text
+        elements.push({
+          type: "text",
+          text: "SHOP NOW",
+          font_family: "Montserrat",
+          font_weight: "800",
+          fill_color: "#ffffff",
+          font_size: "18px",
+          x: "50%",
+          y: "54%",
+          width: "50%",
+          x_alignment: "center",
+          y_alignment: "center",
+          track: 19,
+          time: 15.0,
+          duration: 19.5,
+        });
+
+        // Link in bio text
+        elements.push({
+          type: "text",
+          text: "👉 LINK IN BIO 👈",
+          font_family: "Montserrat",
+          font_weight: "700",
+          fill_color: "#fbbf24",
+          font_size: "14px",
+          x: "50%",
+          y: "61%",
+          width: "50%",
+          x_alignment: "center",
+          track: 20,
+          time: 15.3,
+          duration: 19.2,
+          animations: [{ type: "fade-in", duration: 0.5 }]
+        });
+
       } else {
         elements.push({
           type: "image",
@@ -847,7 +1213,17 @@ export async function getVideos(req: AuthenticatedRequest, res: Response) {
       }
     }
 
-    return res.status(200).json({ videos });
+    const cleanedVideos = videos.map(v => {
+      if (v.script.includes('||METADATA||')) {
+        return {
+          ...v,
+          script: v.script.split('||METADATA||')[0]
+        };
+      }
+      return v;
+    });
+
+    return res.status(200).json({ videos: cleanedVideos });
   } catch (error) {
     return res.status(500).json({ message: 'Error retrieving videos' });
   }
@@ -871,6 +1247,10 @@ export async function getPublicVideo(req: any, res: Response) {
 
     if (!video) {
       return res.status(404).json({ message: 'Video not found.' });
+    }
+
+    if (video.script.includes('||METADATA||')) {
+      video.script = video.script.split('||METADATA||')[0];
     }
 
     return res.status(200).json({ video });
