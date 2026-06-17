@@ -21,24 +21,37 @@ Return ONLY a JSON object (no markdown, no code fences, just pure JSON) with the
   "tagline": "Punchy memorable tagline max 8 words"
 }`;
 
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      contents: [
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+  let lastError: any = null;
+
+  for (const model of models) {
+    try {
+      console.log(`[Product AI] Attempting Gemini model: ${model}`);
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
         {
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mime, data: base64 } },
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                { inline_data: { mime_type: mime, data: base64 } },
+              ],
+            },
           ],
         },
-      ],
-    },
-    { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
-  );
+        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+      );
 
-  const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleaned);
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      return JSON.parse(cleaned);
+    } catch (err: any) {
+      console.warn(`[Product AI] Gemini model ${model} failed:`, err.message);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('All Gemini models failed');
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
