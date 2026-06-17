@@ -1387,26 +1387,46 @@ function mapGender(genderStr: string): string {
   return guessGender(genderStr);
 }
 
-// 4. Fetch HeyGen Avatars: GET /api/videos/avatars
-export async function getAvatars(req: AuthenticatedRequest, res: Response) {
+// Cache disk persistence helpers
+const CACHE_DIR = path.join(__dirname, '../uploads');
+
+function saveCacheToDisk(filename: string, data: any) {
   try {
-    const user = req.user;
-    if (!user) {
-      return res.status(401).json({ message: 'Unauthorized' });
+    if (!fs.existsSync(CACHE_DIR)) {
+      fs.mkdirSync(CACHE_DIR, { recursive: true });
     }
+    const filepath = path.join(CACHE_DIR, filename);
+    fs.writeFileSync(filepath, JSON.stringify({ data, timestamp: Date.now() }), 'utf8');
+  } catch (err: any) {
+    console.error(`[Cache Disk Write Error] Failed to write ${filename}:`, err.message);
+  }
+}
 
-    if (!HEYGEN_API_KEY) {
-      return res.status(400).json({ message: 'HeyGen API Key is not configured' });
+function loadCacheFromDisk(filename: string): { data: any; timestamp: number } | null {
+  try {
+    const filepath = path.join(CACHE_DIR, filename);
+    if (fs.existsSync(filepath)) {
+      const content = fs.readFileSync(filepath, 'utf8');
+      const parsed = JSON.parse(content);
+      if (parsed && parsed.data) {
+        return parsed;
+      }
     }
+  } catch (err: any) {
+    console.error(`[Cache Disk Read Error] Failed to read ${filename}:`, err.message);
+  }
+  return null;
+}
 
-    // Check if cache is still valid
-    const now = Date.now();
-    if (cachedAvatars && (now - cachedAvatarsTime < CACHE_TTL)) {
-      return res.status(200).json(cachedAvatars);
-    }
+// Background cache refresh flags
+let refreshingAvatars = false;
+let refreshingVoices = false;
 
-    console.log('[HeyGen API Cache] Cache miss, fetching avatars, groups, and looks...');
-    
+async function refreshAvatarsBackground() {
+  if (refreshingAvatars) return;
+  refreshingAvatars = true;
+  console.log('[HeyGen API Cache] Starting background refresh of avatars...');
+  try {
     // 1. Fetch V2 avatars
     let v2Avatars: any[] = [];
     try {
@@ -1443,7 +1463,6 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
         hasMore = !!nextToken;
         pagesFetched++;
       }
-      console.log(`[HeyGen API Cache] Fetched ${Object.keys(groupsMap).length} V3 avatar groups.`);
     } catch (err: any) {
       console.error('V3 Groups fetch failed:', err.message);
     }
@@ -1467,7 +1486,6 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
         hasMore = !!nextToken;
         pagesFetched++;
       }
-      console.log(`[HeyGen API Cache] Fetched ${v3Looks.length} V3 avatar looks.`);
     } catch (err: any) {
       console.error('V3 Looks fetch failed:', err.message);
     }
@@ -1516,35 +1534,21 @@ export async function getAvatars(req: AuthenticatedRequest, res: Response) {
     }
 
     cachedAvatars = { data: { avatars: mergedList } };
-    cachedAvatarsTime = now;
-
-    return res.status(200).json(cachedAvatars);
-  } catch (error: any) {
-    console.error('Error fetching HeyGen avatars:', error.response?.data || error.message);
-    return res.status(500).json({ message: error.response?.data?.message || 'Error fetching avatars from HeyGen' });
+    cachedAvatarsTime = Date.now();
+    saveCacheToDisk('cached_avatars.json', cachedAvatars);
+    console.log('[HeyGen API Cache] Background refresh of avatars complete.');
+  } catch (backgroundErr: any) {
+    console.error('[HeyGen API Cache] Background refresh of avatars failed:', backgroundErr.message);
+  } finally {
+    refreshingAvatars = false;
   }
 }
 
-// 5. Fetch HeyGen Voices: GET /api/videos/voices
-export async function getVoices(req: AuthenticatedRequest, res: Response) {
+async function refreshVoicesBackground() {
+  if (refreshingVoices) return;
+  refreshingVoices = true;
+  console.log('[HeyGen API Cache] Starting background refresh of voices...');
   try {
-    const user = req.user;
-    if (!user) {
-      return res.status(401).json({ message: 'Unauthorized' });
-    }
-
-    if (!HEYGEN_API_KEY) {
-      return res.status(400).json({ message: 'HeyGen API Key is not configured' });
-    }
-
-    // Check if cache is still valid
-    const now = Date.now();
-    if (cachedVoices && (now - cachedVoicesTime < CACHE_TTL)) {
-      return res.status(200).json(cachedVoices);
-    }
-
-    console.log('[HeyGen API Cache] Cache miss, fetching voices from V2 and V3 APIs...');
-
     // Fetch V2 voices
     let v2Voices: any[] = [];
     try {
@@ -1565,7 +1569,6 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
       let hasMore = true;
       let nextToken = '';
       let pagesFetched = 0;
-      // Safety limit at 100 pages
       while (hasMore && pagesFetched < 100) {
         const url = 'https://api.heygen.com/v3/voices' + (nextToken ? '?token=' + encodeURIComponent(nextToken) : '');
         const v3Response = await axios.get(url, {
@@ -1579,7 +1582,6 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
         hasMore = !!nextToken;
         pagesFetched++;
       }
-      console.log(`[HeyGen API Cache] Successfully fetched ${v3Voices.length} voices across ${pagesFetched} V3 pages.`);
     } catch (err: any) {
       console.error('V3 Voices fetch failed:', err.message);
     }
@@ -1624,12 +1626,103 @@ export async function getVoices(req: AuthenticatedRequest, res: Response) {
     }
 
     cachedVoices = { data: { voices: mergedList } };
-    cachedVoicesTime = now;
+    cachedVoicesTime = Date.now();
+    saveCacheToDisk('cached_voices.json', cachedVoices);
+    console.log('[HeyGen API Cache] Background refresh of voices complete.');
+  } catch (backgroundErr: any) {
+    console.error('[HeyGen API Cache] Background refresh of voices failed:', backgroundErr.message);
+  } finally {
+    refreshingVoices = false;
+  }
+}
 
-    return res.status(200).json(cachedVoices);
+// 4. Fetch HeyGen Avatars: GET /api/videos/avatars
+export async function getAvatars(req: AuthenticatedRequest, res: Response) {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!HEYGEN_API_KEY) {
+      return res.status(400).json({ message: 'HeyGen API Key is not configured' });
+    }
+
+    const now = Date.now();
+
+    // 1. Try Memory Cache
+    if (cachedAvatars && (now - cachedAvatarsTime < CACHE_TTL)) {
+      return res.status(200).json(cachedAvatars);
+    }
+
+    // 2. Try Disk Cache
+    if (!cachedAvatars) {
+      const diskCache = loadCacheFromDisk('cached_avatars.json');
+      if (diskCache) {
+        cachedAvatars = diskCache.data;
+        cachedAvatarsTime = diskCache.timestamp;
+        console.log('[HeyGen API Cache] Serviced getAvatars instantly from disk cache.');
+
+        // Revalidate in background if expired
+        if (now - cachedAvatarsTime >= CACHE_TTL) {
+          refreshAvatarsBackground();
+        }
+        return res.status(200).json(cachedAvatars);
+      }
+    }
+
+    // 3. Complete Cache Miss: fetch synchronously once so user gets data, then save
+    console.log('[HeyGen API Cache] Absolute cache miss. Fetching avatars synchronously...');
+    await refreshAvatarsBackground();
+    return res.status(200).json(cachedAvatars || { data: { avatars: [] } });
   } catch (error: any) {
-    console.error('Error fetching HeyGen voices:', error.response?.data || error.message);
-    return res.status(500).json({ message: error.response?.data?.message || 'Error fetching voices from HeyGen' });
+    console.error('Error fetching HeyGen avatars:', error.message);
+    return res.status(500).json({ message: 'Error fetching avatars from HeyGen' });
+  }
+}
+
+// 5. Fetch HeyGen Voices: GET /api/videos/voices
+export async function getVoices(req: AuthenticatedRequest, res: Response) {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!HEYGEN_API_KEY) {
+      return res.status(400).json({ message: 'HeyGen API Key is not configured' });
+    }
+
+    const now = Date.now();
+
+    // 1. Try Memory Cache
+    if (cachedVoices && (now - cachedVoicesTime < CACHE_TTL)) {
+      return res.status(200).json(cachedVoices);
+    }
+
+    // 2. Try Disk Cache
+    if (!cachedVoices) {
+      const diskCache = loadCacheFromDisk('cached_voices.json');
+      if (diskCache) {
+        cachedVoices = diskCache.data;
+        cachedVoicesTime = diskCache.timestamp;
+        console.log('[HeyGen API Cache] Serviced getVoices instantly from disk cache.');
+
+        // Revalidate in background if expired
+        if (now - cachedVoicesTime >= CACHE_TTL) {
+          refreshVoicesBackground();
+        }
+        return res.status(200).json(cachedVoices);
+      }
+    }
+
+    // 3. Complete Cache Miss: fetch synchronously once so user gets data, then save
+    console.log('[HeyGen API Cache] Absolute cache miss. Fetching voices synchronously...');
+    await refreshVoicesBackground();
+    return res.status(200).json(cachedVoices || { data: { voices: [] } });
+  } catch (error: any) {
+    console.error('Error fetching HeyGen voices:', error.message);
+    return res.status(500).json({ message: 'Error fetching voices from HeyGen' });
   }
 }
 
