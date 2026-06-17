@@ -144,7 +144,8 @@ export default function Dashboard() {
   const [productImageBase64, setProductImageBase64] = useState('');
   const [productImageMime, setProductImageMime] = useState('image/jpeg');
   const [productImagePreview, setProductImagePreview] = useState('');
-  const [productAnalysis, setProductAnalysis] = useState<any>(null);
+    const [productAnalysis, setProductAnalysis] = useState<any>(null);
+  const [analysisSource, setAnalysisSource] = useState<string>('');
   const [analyzingProduct, setAnalyzingProduct] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -171,6 +172,7 @@ export default function Dashboard() {
     setProductImageMime(file.type);
     setProductAnalysis(null);
     setAnalysisError('');
+    setAnalysisSource('');
     
     // Create preview URL
     const previewUrl = URL.createObjectURL(file);
@@ -187,6 +189,7 @@ export default function Dashboard() {
   const analyzeProductImage = async (base64: string, mime: string) => {
     setAnalyzingProduct(true);
     setAnalysisError('');
+    setAnalysisSource('');
     try {
       const res = await api.post('/product/analyze', {
         imageBase64: base64,
@@ -194,6 +197,7 @@ export default function Dashboard() {
       });
       const analysis = res.data.analysis;
       setProductAnalysis(analysis);
+      setAnalysisSource(res.data.source || '');
       // Auto-populate script and visual prompt from AI
       setScript(analysis.adScript || '');
       setVisualPrompt(analysis.visualPrompt || '');
@@ -869,21 +873,32 @@ export default function Dashboard() {
 
                     {/* AI analysis success banner */}
                     {productAnalysis && !analyzingProduct && (
-                      <div className="flex items-start gap-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5">
-                        <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-start gap-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5">
+                          <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-emerald-700">AI analysis complete!</p>
+                            <p className="text-[10px] text-emerald-600 mt-0.5">Ad script and scene setup have been auto-filled below. You can edit them before generating.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => analyzeProductImage(productImageBase64, productImageMime)}
+                            className="flex-shrink-0 text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                          >
+                            Re-analyze
+                          </button>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-emerald-700">AI analysis complete!</p>
-                          <p className="text-[10px] text-emerald-600 mt-0.5">Ad script and scene setup have been auto-filled below. You can edit them before generating.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => analyzeProductImage(productImageBase64, productImageMime)}
-                          className="flex-shrink-0 text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline"
-                        >
-                          Re-analyze
-                        </button>
+
+                        {analysisSource === 'heuristic' && (
+                          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[10px] p-3 rounded-2xl flex items-start gap-2 shadow-sm">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold">Notice:</span> The AI vision models are currently not configured on this server, so a generic fallback script template was used. For high-quality, product-specific ads (e.g. shoes, beauty, watch, tech), please add your <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono">GEMINI_API_KEY</code> to the server's <code className="bg-amber-100/80 px-1 py-0.5 rounded font-mono">.env</code> file.
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

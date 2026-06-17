@@ -47,15 +47,22 @@ Return ONLY a JSON object (no markdown, no code fences, just pure JSON) with the
 async function captionImageWithBLIP(base64: string): Promise<string> {
   // Convert base64 to buffer
   const imgBuffer = Buffer.from(base64, 'base64');
+  const hfKey = (process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN || '').trim();
+
+  const headers: any = {
+    'Content-Type': 'application/octet-stream',
+    'Accept': 'application/json',
+  };
+
+  if (hfKey) {
+    headers['Authorization'] = `Bearer ${hfKey}`;
+  }
 
   const response = await axios.post(
-    'https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large',
+    'https://router.huggingface.co/hf-inference/models/Salesforce/blip-image-captioning-large',
     imgBuffer,
     {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Accept': 'application/json',
-      },
+      headers,
       timeout: 30000,
     }
   );
