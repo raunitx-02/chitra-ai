@@ -168,6 +168,81 @@ async function getUserVideoResolution(userId: string): Promise<string> {
   }
 }
 
+// Heuristic fallback to strip timestamps, square/parentheses brackets, etc.
+function cleanScriptHeuristically(rawScript: string): string {
+  let cleaned = rawScript.replace(/\[[^\]]+\]/g, '');
+  cleaned = cleaned.replace(/\([^)]+\)/g, '');
+  cleaned = cleaned.replace(/(🎥?\s*On-Screen Text:|CTA:)/gi, '');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  cleaned = cleaned.replace(/^["']|["']$/g, '');
+  return cleaned;
+}
+
+// AI helper to analyze, clean, and structure UGC scripts into scenes
+async function analyzeAndStructureUgcScript(rawScript: string): Promise<{
+  cleanSpokenScript: string;
+  structuredPromptForAgent: string;
+}> {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'AIzaSyDummyKeyPleaseReplace') {
+    const clean = cleanScriptHeuristically(rawScript);
+    return {
+      cleanSpokenScript: clean,
+      structuredPromptForAgent: `Generate a high-quality multi-scene marketing video. The speaker avatar must speak ONLY the following words: "${clean}". Do not say any stage directions, timestamps, or brackets. Set appropriate camera angles and lifestyle B-roll scenes corresponding to the narrative.`,
+    };
+  }
+
+  const prompt = `You are an expert video production and marketing AI assistant.
+You are given a raw UGC ad script that contains timestamps, brackets (e.g. [0-5s | Hook]), scene descriptions, camera instructions, or on-screen text directions.
+
+You must:
+1. Extract ONLY the exact spoken narration/dialogue for the AI avatar. Strip out all brackets, scene directions, time markers, and on-screen text instructions. The final text must be clean spoken dialogue in the original language (e.g. Hindi, English).
+2. Create a detailed, sequential structured prompt for a Video Agent AI to render this video. The prompt should explicitly outline each scene's visual context, B-roll background actions matching the product/service, camera transitions, and state clearly that the avatar should ONLY speak the clean dialogue.
+
+Input script:
+"""
+${rawScript}
+"""
+
+Return ONLY a JSON object (no markdown code blocks, no other text) with these exact fields:
+{
+  "cleanSpokenScript": "The complete combined clean spoken narration for the avatar to say",
+  "structuredPromptForAgent": "A detailed, sequential video production prompt describing the multi-scene UGC ad. Clearly specify that the avatar should ONLY speak the clean dialogue. Describe the visual scenes, B-roll actions matching the product/service, and camera transitions."
+}`;
+
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+  for (const model of models) {
+    try {
+      console.log(`[Script AI] Structuring script via Gemini: ${model}`);
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          contents: [
+            { parts: [{ text: prompt }] },
+          ],
+        },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 20000 }
+      );
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const result = JSON.parse(cleaned);
+      if (result.cleanSpokenScript && result.structuredPromptForAgent) {
+        return result;
+      }
+    } catch (err: any) {
+      console.warn(`[Script AI] Gemini model ${model} failed:`, err.message);
+    }
+  }
+
+  // Fallback if Gemini fails
+  const clean = cleanScriptHeuristically(rawScript);
+  return {
+    cleanSpokenScript: clean,
+    structuredPromptForAgent: `Generate a high-quality multi-scene marketing video. The speaker avatar must speak ONLY the following words: "${clean}". Do not say any stage directions or timestamps. Set appropriate camera angles and lifestyle B-roll scenes corresponding to the narrative.`,
+  };
+}
+
 // 1. Generate Video: POST /api/videos/generate
 export async function generateVideo(req: AuthenticatedRequest, res: Response) {
   try {
@@ -212,14 +287,38 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ message: 'Insufficient credits. Please top up your account.' });
     }
 
+    // Preprocess script to remove time markers, brackets, and scene descriptions
+    let processedScript = script || '';
+    let agentPrompt = script || '';
+
+    if (script) {
+      if (mode === 'product') {
+        processedScript = cleanScriptHeuristically(script);
+        agentPrompt = processedScript;
+      } else {
+        try {
+          console.log('[Script Analysis] Preprocessing UGC script...');
+          const structuredResult = await analyzeAndStructureUgcScript(script);
+          processedScript = structuredResult.cleanSpokenScript;
+          agentPrompt = structuredResult.structuredPromptForAgent;
+          console.log('[Script Analysis] Clean spoken script:', processedScript);
+          console.log('[Script Analysis] Agent prompt:', agentPrompt);
+        } catch (err: any) {
+          console.error('[Script Analysis] Error preprocessing script:', err.message);
+          processedScript = cleanScriptHeuristically(script);
+          agentPrompt = `Generate a high-quality multi-scene marketing video. The speaker avatar must speak ONLY the following words: "${processedScript}". Do not say any stage directions or timestamps. Set appropriate camera angles and lifestyle B-roll scenes corresponding to the narrative.`;
+        }
+      }
+    }
+
     // Determine orientation and duration
     const orientationVal = orientation || 'portrait';
     const durationVal = parseInt(duration) || 0; // 0 = auto
 
     // Step 1: Create a PENDING Video record
     const serializedScript = mode === 'product' && req.body.productAnalysis
-      ? `${script}||METADATA||${JSON.stringify(req.body.productAnalysis)}`
-      : script;
+      ? `${processedScript}||METADATA||${JSON.stringify(req.body.productAnalysis)}`
+      : processedScript;
 
     const video = await prisma.video.create({
       data: {
@@ -250,7 +349,6 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
     if (HEYGEN_API_KEY) {
       try {
         let characterInput: any;
-
 
         if (mode === 'product') {
           console.log('[Product Mode] Processing image with background removal...');
@@ -297,7 +395,7 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
         if (mode !== 'product') {
           // OPTION A: Integrate HeyGen Video Agent V3 API for full multi-scene dynamic generation
           const agentPayload = {
-            prompt: script,
+            prompt: agentPrompt,
             avatar_id: avatarId,
             voice_id: voiceId,
             orientation: orientationVal === 'landscape' ? 'landscape' : 'portrait',
@@ -329,7 +427,7 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
             character: characterInput,
             voice: voiceId && voiceId !== 'none' ? {
               type: 'text',
-              input_text: script,
+              input_text: processedScript,
               voice_id: voiceId,
             } : {
               type: 'silence',
