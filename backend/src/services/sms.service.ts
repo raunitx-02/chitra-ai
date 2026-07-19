@@ -2,6 +2,8 @@ import twilio from 'twilio';
 import axios from 'axios';
 
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || '';
+const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY || '';
+const TWOFACTOR_TEMPLATE_NAME = process.env.TWOFACTOR_TEMPLATE_NAME || '';
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
@@ -18,7 +20,9 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
   }
 }
 
-if (FAST2SMS_API_KEY) {
+if (TWOFACTOR_API_KEY) {
+  console.log('[SMS Service] 2Factor.in integration loaded.');
+} else if (FAST2SMS_API_KEY) {
   console.log('[SMS Service] Fast2SMS integration loaded.');
 } else if (!twilioClient) {
   console.log('[SMS Service] Running in sandbox mode. OTP codes will be printed to console/UI.');
@@ -30,7 +34,34 @@ if (FAST2SMS_API_KEY) {
 export async function sendSMSOtp(mobileNumber: string, otp: string): Promise<boolean> {
   const formattedNumber = mobileNumber.startsWith('+') ? mobileNumber : `+${mobileNumber}`;
 
-  // 1. Fast2SMS Integration (Ideal for Indian numbers)
+  // 1. 2Factor.in Integration (Primary Option)
+  if (TWOFACTOR_API_KEY) {
+    try {
+      let cleanNumber = mobileNumber.replace(/[^\d]/g, '');
+      if (cleanNumber.length === 10) {
+        cleanNumber = `91${cleanNumber}`;
+      }
+
+      console.log(`[SMS Service] Sending 2Factor.in OTP to ${cleanNumber}`);
+      let url = `https://2factor.in/API/V1/${TWOFACTOR_API_KEY}/SMS/${cleanNumber}/${otp}`;
+      if (TWOFACTOR_TEMPLATE_NAME) {
+        url += `/${TWOFACTOR_TEMPLATE_NAME}`;
+      }
+
+      const response = await axios.get(url, { timeout: 15000 });
+
+      if (response.data && response.data.Status === 'Success') {
+        console.log(`[SMS Service] 2Factor.in OTP sent successfully to ${cleanNumber}. Details: ${response.data.Details}`);
+        return true;
+      } else {
+        console.error('[SMS Service] 2Factor.in API returned failure response:', response.data);
+      }
+    } catch (err: any) {
+      console.error('[SMS Service] 2Factor.in sending failed:', err.response?.data || err.message);
+    }
+  }
+
+  // 2. Fast2SMS Integration (Ideal for Indian numbers)
   if (FAST2SMS_API_KEY) {
     try {
       // Fast2SMS OTP route expects the 10-digit phone number without prefix (+91 or 91)
