@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || '';
 const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY || '';
-const TWOFACTOR_TEMPLATE_NAME = process.env.TWOFACTOR_TEMPLATE_NAME || '';
+const TWOFACTOR_TEMPLATE_NAME = process.env.TWOFACTOR_TEMPLATE_NAME || 'RetailStacker AI';
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
@@ -21,7 +21,7 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
 }
 
 if (TWOFACTOR_API_KEY) {
-  console.log('[SMS Service] 2Factor.in integration loaded.');
+  console.log(`[SMS Service] 2Factor.in integration loaded with template: ${TWOFACTOR_TEMPLATE_NAME}`);
 } else if (FAST2SMS_API_KEY) {
   console.log('[SMS Service] Fast2SMS integration loaded.');
 } else if (!twilioClient) {
@@ -45,7 +45,7 @@ export async function sendSMSOtp(mobileNumber: string, otp: string): Promise<boo
       console.log(`[SMS Service] Sending 2Factor.in OTP to ${cleanNumber}`);
       let url = `https://2factor.in/API/V1/${TWOFACTOR_API_KEY}/SMS/${cleanNumber}/${otp}`;
       if (TWOFACTOR_TEMPLATE_NAME) {
-        url += `/${TWOFACTOR_TEMPLATE_NAME}`;
+        url += `/${encodeURIComponent(TWOFACTOR_TEMPLATE_NAME)}`;
       }
 
       const response = await axios.get(url, { timeout: 15000 });
