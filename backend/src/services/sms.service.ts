@@ -38,8 +38,8 @@ export async function sendSMSOtp(mobileNumber: string, otp: string): Promise<boo
   if (TWOFACTOR_API_KEY) {
     try {
       let cleanNumber = mobileNumber.replace(/[^\d]/g, '');
-      if (cleanNumber.length === 10) {
-        cleanNumber = `91${cleanNumber}`;
+      if (cleanNumber.length > 10) {
+        cleanNumber = cleanNumber.slice(-10);
       }
 
       console.log(`[SMS Service] Sending 2Factor.in OTP to ${cleanNumber}`);
