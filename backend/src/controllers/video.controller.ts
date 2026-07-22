@@ -34,9 +34,24 @@ async function removeWhiteBackground(base64: string): Promise<string> {
       visited[y * width + x] = 1;
     }
 
-    const isNearWhite = (r: number, g: number, b: number) => {
-      // Threshold: RGB values are all close to white (e.g. > 230)
-      return r > 230 && g > 230 && b > 230;
+    // Sample the corner pixel color (top-left) to determine background color
+    const cornerIdx = 0;
+    const bgR = image.bitmap.data[cornerIdx];
+    const bgG = image.bitmap.data[cornerIdx + 1];
+    const bgB = image.bitmap.data[cornerIdx + 2];
+
+    const isBgColor = (r: number, g: number, b: number) => {
+      // If background is white-ish (> 220)
+      if (bgR > 200 && bgG > 200 && bgB > 200) {
+        return r > 210 && g > 210 && b > 210;
+      }
+      // If background is black-ish (< 40)
+      if (bgR < 50 && bgG < 50 && bgB < 50) {
+        return r < 45 && g < 45 && b < 45;
+      }
+      // Color distance match
+      const dist = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+      return dist < 45;
     };
 
     while (queue.length > 0) {
@@ -50,7 +65,7 @@ async function removeWhiteBackground(base64: string): Promise<string> {
       const b = image.bitmap.data[colorIdx + 2];
       const a = image.bitmap.data[colorIdx + 3];
 
-      if (a === 0 || isNearWhite(r, g, b)) {
+      if (a === 0 || isBgColor(r, g, b)) {
         // Make transparent
         image.bitmap.data[colorIdx + 3] = 0;
 
@@ -2098,10 +2113,10 @@ async function runKlingUgcPipeline(params: {
             input_text: cleanSpokenScript,
             voice_id: voiceId,
           },
-          // Transparent/minimal background for PiP overlay
+          // Studio backdrop for UGC presenter
           background: {
             type: 'color',
-            value: '#000000',
+            value: '#1e1e2f',
           }
         }],
         dimension: { width, height },
