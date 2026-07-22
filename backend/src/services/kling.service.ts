@@ -326,12 +326,25 @@ export async function generateProductBRollClips(
 
   console.log('[Kling Pipeline] All tasks submitted:', taskIds);
 
-  // Step 3: Poll all tasks concurrently
-  const videoUrls = await Promise.all(
-    taskIds.map((taskId, idx) => pollKlingTask(taskId, 10 * 60 * 1000))
+  // Step 3: Poll all tasks concurrently with Promise.allSettled
+  const results = await Promise.allSettled(
+    taskIds.map((taskId) => pollKlingTask(taskId, 10 * 60 * 1000))
   );
 
-  console.log('[Kling Pipeline] All clips generated! Downloading...');
+  const videoUrls: string[] = [];
+  results.forEach((res, idx) => {
+    if (res.status === 'fulfilled' && res.value) {
+      videoUrls.push(res.value);
+    } else {
+      console.warn(`[Kling Pipeline] Clip ${idx + 1} polling failed/timed out:`, (res as any).reason?.message);
+    }
+  });
+
+  if (videoUrls.length === 0) {
+    throw new Error('All Kling B-roll clip generations failed or timed out.');
+  }
+
+  console.log(`[Kling Pipeline] ${videoUrls.length} clips generated! Downloading...`);
 
   // Step 4: Download all clips to local files
   if (!fs.existsSync(outputDir)) {
@@ -341,10 +354,16 @@ export async function generateProductBRollClips(
   const localPaths: string[] = [];
   for (let i = 0; i < videoUrls.length; i++) {
     const localPath = path.join(outputDir, `broll_${i + 1}.mp4`);
-    await downloadVideoToFile(videoUrls[i], localPath);
-    localPaths.push(localPath);
+    try {
+      await downloadVideoToFile(videoUrls[i], localPath);
+      if (fs.existsSync(localPath) && fs.statSync(localPath).size > 0) {
+        localPaths.push(localPath);
+      }
+    } catch (dlErr: any) {
+      console.warn(`[Kling Pipeline] Failed downloading clip ${i + 1}:`, dlErr.message);
+    }
   }
 
-  console.log('[Kling Pipeline] All clips downloaded:', localPaths);
+  console.log('[Kling Pipeline] Clips downloaded successfully:', localPaths);
   return localPaths;
 }
