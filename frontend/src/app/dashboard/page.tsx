@@ -507,7 +507,7 @@ export default function Dashboard() {
     if (!productImageBase64) { setError('Please upload your product image first.'); return; }
     if (!selectedAvatarId) { setError('Please select an avatar.'); return; }
     if (!selectedVoiceId) { setError('Please select a voice.'); return; }
-    if (creditsBalance < 40) { setError('Chitra UGC Pro ads cost 40 credits. Please top up.'); return; }
+    if (creditsBalance < 40) { setError('RetailStacker UGC Pro ads cost 40 credits. Please top up.'); return; }
 
     setRendering(true); setError('');
     setShowProcessingModal(true); setModalStage(0);
@@ -1003,7 +1003,7 @@ export default function Dashboard() {
                 <div className="bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl p-4 mb-4 text-white">
                   <div className="flex items-center gap-2 mb-1">
                     <Sparkles className="w-4 h-4" />
-                    <span className="text-sm font-black">Chitra UGC Pro</span>
+                    <span className="text-sm font-black">RetailStacker UGC Pro</span>
                     <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded font-black">PREMIUM</span>
                   </div>
                   <p className="text-xs text-white/80">Our AI animates your product cinematically, adds a speaking avatar, and composes a professional UGC ad — automatically.</p>
