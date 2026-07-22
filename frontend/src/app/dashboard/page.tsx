@@ -493,21 +493,21 @@ export default function Dashboard() {
 
   // ── Generate Kling UGC Pro Ad ─────────────────────────────────────────────
   const klingModalStages = [
-    { title: "Analyzing product with Gemini AI...", description: "Understanding your product's unique features and visual identity" },
-    { title: "Crafting 3 cinematic scene prompts...", description: "Designing Scalio-quality B-roll shots: hero reveal, lifestyle, CTA" },
-    { title: "Animating product with Kling v3...", description: "Generating photorealistic cinematic product B-roll clips" },
-    { title: "Generating avatar talking head...", description: "HeyGen avatar speaking your cleaned script" },
-    { title: "Compositing final UGC ad...", description: "Merging B-roll + avatar into a polished UGC video" },
-    { title: "🎬 Your Kling UGC Ad is ready!", description: "Scalio-quality result delivered to your library" },
+    { title: "Analyzing your product with AI...", description: "Understanding your product's unique features and visual identity" },
+    { title: "Crafting cinematic scene prompts...", description: "Designing premium B-roll shots: hero reveal, lifestyle, CTA" },
+    { title: "Generating cinematic product clips...", description: "Our AI creates photorealistic animated product visuals" },
+    { title: "Generating avatar presentation...", description: "AI avatar delivering your script with perfect sync" },
+    { title: "Composing final UGC ad...", description: "Merging all layers into a polished, publish-ready video" },
+    { title: "🎬 Your UGC Pro Ad is ready!", description: "Premium result delivered to your video library" },
   ];
 
   const handleGenerateKlingUgcAd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!script.trim()) { setError('Please enter an ad script.'); return; }
-    if (!productImageBase64) { setError('Please upload your product image for the Kling UGC ad.'); return; }
+    if (!productImageBase64) { setError('Please upload your product image first.'); return; }
     if (!selectedAvatarId) { setError('Please select an avatar.'); return; }
     if (!selectedVoiceId) { setError('Please select a voice.'); return; }
-    if (creditsBalance < 40) { setError('Kling UGC Pro ads cost 40 credits. Please top up.'); return; }
+    if (creditsBalance < 40) { setError('Chitra UGC Pro ads cost 40 credits. Please top up.'); return; }
 
     setRendering(true); setError('');
     setShowProcessingModal(true); setModalStage(0);
@@ -540,7 +540,7 @@ export default function Dashboard() {
     } catch (err: any) {
       clearInterval(stageInterval);
       setShowProcessingModal(false);
-      setError(err.response?.data?.message || 'Kling UGC generation failed.');
+      setError(err.response?.data?.message || 'UGC Pro generation failed.');
     } finally {
       setRendering(false);
     }
@@ -1003,14 +1003,14 @@ export default function Dashboard() {
                 <div className="bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl p-4 mb-4 text-white">
                   <div className="flex items-center gap-2 mb-1">
                     <Sparkles className="w-4 h-4" />
-                    <span className="text-sm font-black">Kling UGC Pro</span>
-                    <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded font-black">SCALIO-QUALITY</span>
+                    <span className="text-sm font-black">Chitra UGC Pro</span>
+                    <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded font-black">PREMIUM</span>
                   </div>
-                  <p className="text-xs text-white/80">Cinematic product B-roll (Kling v3) + Avatar talking head (HeyGen) + Auto-compose = Professional UGC ad</p>
+                  <p className="text-xs text-white/80">Our AI animates your product cinematically, adds a speaking avatar, and composes a professional UGC ad — automatically.</p>
                   <div className="flex gap-3 mt-3">
-                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> 3 cinematic clips</div>
-                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> AI scene prompts</div>
-                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> Auto-compose</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> Cinematic product animation</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> AI scene generation</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> Auto-composed output</div>
                   </div>
                 </div>
 
@@ -1037,7 +1037,7 @@ export default function Dashboard() {
                       <Upload className="w-5 h-5 text-purple-500" />
                     </div>
                     <p className="text-xs font-bold text-gray-700">Upload your product photo</p>
-                    <p className="text-[10px] text-gray-400 mt-1">Watch, skincare, shoes, gadgets — Kling will animate it cinematically</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Watch, skincare, shoes, gadgets — our AI will animate it cinematically</p>
                     <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleProductImageFile(f); }} />
                   </div>
                 ) : (
@@ -1051,7 +1051,7 @@ export default function Dashboard() {
                           <p className="text-xs font-bold text-gray-800 truncate">{productAnalysis.productName}</p>
                           <p className="text-[10px] text-gray-500 truncate">{productAnalysis.category}</p>
                           <div className="flex items-center gap-1 mt-1.5 text-[10px] text-purple-600 font-semibold">
-                            <CheckCircle className="w-3 h-3" /> Ready for Kling animation
+                            <CheckCircle className="w-3 h-3" /> Ready for AI animation
                           </div>
                         </>
                       ) : (
@@ -1062,7 +1062,7 @@ export default function Dashboard() {
                 )}
 
                 <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                  <p className="text-[10px] text-amber-800"><span className="font-bold">40 credits per video</span> — Kling v3 B-roll (3 clips) + HeyGen avatar + FFmpeg compose. Takes 3–5 minutes.</p>
+                  <p className="text-[10px] text-amber-800"><span className="font-bold">40 credits per video</span> — Our AI generates cinematic product animations, avatar presentation, and auto-composes the final ad. Takes 3–5 minutes.</p>
                 </div>
               </div>
             )}
@@ -1243,13 +1243,13 @@ export default function Dashboard() {
                     className="w-full bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-purple-500/25"
                   >
                     {rendering ? (
-                      <><Loader2 className="w-5 h-5 animate-spin" /><span>Generating Kling UGC Ad... (3–5 min)</span></>
+                      <><Loader2 className="w-5 h-5 animate-spin" /><span>Generating your UGC Pro Ad... (3–5 min)</span></>
                     ) : (
                       <><Sparkles className="w-4 h-4" /><span>🎬 Generate UGC Pro Ad (40 credits)</span></>
                     )}
                   </button>
                   <p className="text-[10px] text-center text-gray-400">
-                    ✨ Kling v3 cinematic B-roll + HeyGen avatar + auto-composed — Scalio quality
+                    ✨ Cinematic AI product animation + avatar + auto-composed — premium quality
                   </p>
                 </div>
               )}
