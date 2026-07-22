@@ -6,6 +6,8 @@ import { VideoStatus } from '@prisma/client';
 import { Jimp } from 'jimp';
 import fs from 'fs';
 import path from 'path';
+import { generateKlingScenePrompts, submitKlingTask, pollKlingTask, downloadVideoToFile, generateProductBRollClips } from '../services/kling.service';
+import { composeUgcAd, addCaptionOverlay, checkFFmpegAvailable } from '../services/compose.service';
 
 const HEYGEN_API_KEY = process.env.HEYGEN_API_KEY || '';
 
@@ -1928,4 +1930,300 @@ export async function resumeActivePolling() {
   } catch (err) {
     console.error('[HeyGen Resume] Error resuming active polling on startup:', err);
   }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Kling UGC Ad Generation: POST /api/videos/generate-kling-ugc
+// This creates a Scalio-quality UGC ad:
+//   1. Gemini AI generates 3 cinematic Kling scene prompts from script + product
+//   2. Kling v3 generates animated product B-roll clips
+//   3. HeyGen generates the talking avatar video
+//   4. FFmpeg composes everything into a final polished UGC ad
+// ──────────────────────────────────────────────────────────────────────────────
+export async function generateKlingUgcAd(req: AuthenticatedRequest, res: Response) {
+  try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+
+    const {
+      script,
+      avatarId,
+      voiceId,
+      orientation,
+      productImageBase64,
+      productImageMime,
+      productDescription,
+      productCategory,
+      hookText,
+    } = req.body;
+
+    if (!script || !avatarId || !voiceId) {
+      return res.status(400).json({ message: 'script, avatarId, and voiceId are required.' });
+    }
+    if (!productImageBase64) {
+      return res.status(400).json({ message: 'Product image is required for Kling UGC mode.' });
+    }
+
+    // Check credits (Kling UGC costs 40 credits — higher quality)
+    const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+    if (!dbUser || dbUser.creditsBalance < 40) {
+      return res.status(400).json({ message: 'Insufficient credits. Kling UGC ads cost 40 credits.' });
+    }
+
+    const orientationVal = (orientation || 'portrait') as 'portrait' | 'landscape' | 'square';
+    const aspectRatio = orientationVal === 'landscape' ? '16:9' : orientationVal === 'square' ? '1:1' : '9:16';
+
+    // Step 1: Create DB record
+    const video = await prisma.video.create({
+      data: {
+        userId: user.id,
+        script: script,
+        avatarId: avatarId,
+        voiceId: voiceId,
+        language: req.body.language || 'English',
+        status: VideoStatus.PROCESSING,
+        videoUrl: 'kling:pending',
+        hookText: hookText || null,
+      },
+    });
+
+    // Step 2: Deduct credits
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { creditsBalance: { decrement: 40 } },
+    });
+
+    // Respond immediately — generation happens in background
+    res.status(202).json({
+      message: 'Kling UGC ad generation started! This takes 3-5 minutes.',
+      videoId: video.id,
+      creditsBalance: dbUser.creditsBalance - 40,
+    });
+
+    // Step 3: Run generation pipeline in background
+    runKlingUgcPipeline({
+      videoId: video.id,
+      userId: user.id,
+      script,
+      avatarId,
+      voiceId,
+      orientation: orientationVal,
+      aspectRatio,
+      productImageBase64,
+      productImageMime: productImageMime || 'image/jpeg',
+      productDescription: productDescription || 'Product',
+      productCategory: productCategory || 'product',
+      hookText: hookText || '',
+    }).catch(err => {
+      console.error('[Kling Pipeline] Unhandled error:', err);
+    });
+
+  } catch (error: any) {
+    console.error('[Kling UGC] Error:', error);
+    return res.status(500).json({ message: error.message || 'Error starting Kling UGC generation' });
+  }
+}
+
+// ─── Background pipeline runner ───────────────────────────────────────────────
+async function runKlingUgcPipeline(params: {
+  videoId: string;
+  userId: string;
+  script: string;
+  avatarId: string;
+  voiceId: string;
+  orientation: 'portrait' | 'landscape' | 'square';
+  aspectRatio: string;
+  productImageBase64: string;
+  productImageMime: string;
+  productDescription: string;
+  productCategory: string;
+  hookText: string;
+}) {
+  const { videoId, userId, script, avatarId, voiceId, orientation, aspectRatio,
+    productImageBase64, productImageMime, productDescription, productCategory, hookText } = params;
+
+  const tmpDir = path.join(__dirname, '../uploads/kling', videoId);
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  try {
+    console.log(`[Kling Pipeline] Starting full UGC pipeline for video: ${videoId}`);
+
+    // ── Save product image locally so Kling can access it ─────────────────
+    const productImagePath = path.join(tmpDir, 'product.jpg');
+    fs.writeFileSync(productImagePath, Buffer.from(productImageBase64, 'base64'));
+
+    // Upload product image to a public URL (use our own backend's static URL)
+    const backendBaseUrl = process.env.BACKEND_PUBLIC_URL || 'https://ugc.retailstacker.com/api';
+    const productPublicUrl = `${backendBaseUrl}/uploads/kling/${videoId}/product.jpg`;
+    console.log(`[Kling Pipeline] Product image URL: ${productPublicUrl}`);
+
+    // ── Step A: Generate 3 Kling B-roll clips from product image ──────────
+    console.log('[Kling Pipeline] Step A: Generating product B-roll with Kling AI...');
+    let bRollPaths: string[] = [];
+    let bRollFailed = false;
+
+    try {
+      bRollPaths = await generateProductBRollClips(
+        productPublicUrl,
+        script,
+        productDescription,
+        productCategory,
+        aspectRatio,
+        tmpDir
+      );
+    } catch (klingErr: any) {
+      console.error('[Kling Pipeline] Kling B-roll generation failed:', klingErr.message);
+      bRollFailed = true;
+      // Continue — we'll fall back to avatar-only
+    }
+
+    // ── Step B: Generate HeyGen Avatar video ──────────────────────────────
+    console.log('[Kling Pipeline] Step B: Generating HeyGen avatar video...');
+
+    let avatarVideoUrl = '';
+    try {
+      const { cleanSpokenScript } = await analyzeAndStructureUgcScript(script);
+
+      const { width, height } = getDimensions(orientation, '1080p');
+
+      const heygenPayload = {
+        video_inputs: [{
+          character: {
+            type: 'avatar',
+            avatar_id: avatarId,
+            avatar_style: 'normal',
+          },
+          voice: {
+            type: 'text',
+            input_text: cleanSpokenScript,
+            voice_id: voiceId,
+          },
+          // Transparent/minimal background for PiP overlay
+          background: {
+            type: 'color',
+            value: '#000000',
+          }
+        }],
+        dimension: { width, height },
+        aspect_ratio: aspectRatio,
+      };
+
+      const heygenResponse = await axios.post(
+        'https://api.heygen.com/v2/video/generate',
+        heygenPayload,
+        { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 30000 }
+      );
+
+      const heygenVideoId = heygenResponse.data?.data?.video_id;
+      if (!heygenVideoId) throw new Error('HeyGen did not return video_id');
+
+      console.log(`[Kling Pipeline] HeyGen job submitted: ${heygenVideoId}. Polling...`);
+
+      // Poll HeyGen until complete
+      avatarVideoUrl = await pollHeyGenUntilComplete(heygenVideoId, 10 * 60 * 1000);
+      console.log('[Kling Pipeline] HeyGen avatar ready:', avatarVideoUrl.slice(0, 80));
+
+    } catch (heygenErr: any) {
+      console.error('[Kling Pipeline] HeyGen failed:', heygenErr.message);
+      throw new Error('HeyGen avatar generation failed: ' + heygenErr.message);
+    }
+
+    // ── Step C: Compose final video ────────────────────────────────────────
+    console.log('[Kling Pipeline] Step C: Composing final UGC ad...');
+
+    const finalOutputPath = path.join(tmpDir, 'final_ugc_ad.mp4');
+
+    await composeUgcAd({
+      bRollClips: bRollPaths,
+      avatarVideoUrl,
+      outputPath: finalOutputPath,
+      orientation,
+    });
+
+    // ── Step D: Add hook text overlay if provided ──────────────────────────
+    let deliverPath = finalOutputPath;
+    if (hookText && fs.existsSync(finalOutputPath)) {
+      const withCaptionPath = path.join(tmpDir, 'final_with_caption.mp4');
+      deliverPath = await addCaptionOverlay(finalOutputPath, withCaptionPath, hookText);
+    }
+
+    // ── Step E: Move to public uploads and update DB ───────────────────────
+    const publicVideoDir = path.join(__dirname, '../uploads');
+    const publicVideoFilename = `kling_ugc_${videoId}.mp4`;
+    const publicVideoPath = path.join(publicVideoDir, publicVideoFilename);
+
+    if (fs.existsSync(deliverPath)) {
+      fs.copyFileSync(deliverPath, publicVideoPath);
+      console.log('[Kling Pipeline] Final video copied to public path:', publicVideoPath);
+    }
+
+    const publicVideoUrl = `${backendBaseUrl}/uploads/${publicVideoFilename}`;
+
+    await prisma.video.update({
+      where: { id: videoId },
+      data: {
+        status: VideoStatus.COMPLETED,
+        videoUrl: publicVideoUrl,
+        thumbnailUrl: null, // Can add thumbnail generation later
+      },
+    });
+
+    console.log(`[Kling Pipeline] ✅ Video ${videoId} completed! URL: ${publicVideoUrl}`);
+
+    // Clean up tmp dir
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch { /* ignore */ }
+
+  } catch (err: any) {
+    console.error(`[Kling Pipeline] ❌ Failed for video ${videoId}:`, err.message);
+
+    // Refund credits on failure
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { creditsBalance: { increment: 40 } },
+      }),
+      prisma.video.update({
+        where: { id: videoId },
+        data: { status: VideoStatus.FAILED, videoUrl: null },
+      }),
+    ]);
+
+    // Cleanup tmp files
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
+// ─── Poll HeyGen until video URL is ready ─────────────────────────────────────
+async function pollHeyGenUntilComplete(
+  heygenVideoId: string,
+  maxWaitMs: number
+): Promise<string> {
+  const startTime = Date.now();
+  const interval = 8000; // poll every 8 seconds
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+
+    const response = await axios.get(
+      `https://api.heygen.com/v1/video_status.get?video_id=${heygenVideoId}`,
+      { headers: { 'x-api-key': HEYGEN_API_KEY } }
+    );
+
+    const data = response.data?.data;
+    const status = data?.status;
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.log(`[HeyGen Poll] Video: ${heygenVideoId} | Status: ${status} | Elapsed: ${elapsed}s`);
+
+    if (status === 'completed') {
+      const videoUrl = data?.video_url;
+      if (!videoUrl) throw new Error('HeyGen completed but no video_url');
+      return videoUrl;
+    }
+    if (status === 'failed') {
+      throw new Error(`HeyGen video ${heygenVideoId} failed: ${data?.error || 'unknown'}`);
+    }
+  }
+  throw new Error(`HeyGen polling timed out after ${maxWaitMs / 1000}s`);
 }
