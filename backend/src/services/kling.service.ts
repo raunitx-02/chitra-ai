@@ -225,20 +225,21 @@ export async function pollKlingTask(
       );
 
       const data = response.data?.data || response.data;
-      const status = data?.status || data?.task_status;
+      const rawStatus = (data?.status || data?.task_status || '').toString().toUpperCase();
       const elapsed = Math.round((Date.now() - startTime) / 1000);
 
-      console.log(`[Kling] Task ${taskId} | Status: ${status} | Elapsed: ${elapsed}s`);
+      console.log(`[Kling] Task ${taskId} | Status: ${rawStatus} | Elapsed: ${elapsed}s`);
 
-      if (status === 'succeed' || status === 'completed' || status === 'success') {
-        // Extract video URL from response
+      if (['SUCCESS', 'FINISH', 'SUCCEEDED', 'COMPLETED', 'SUCCESSFUL'].includes(rawStatus)) {
+        // Extract video URL from response (handles CrazyRouter format)
         const videoUrl =
+          data?.result_url ||
+          data?.artifact_url ||
+          data?.data?.Response?.AigcVideoTask?.Output?.FileInfos?.[0]?.FileUrl ||
           data?.url ||
           data?.video_url ||
           data?.task_result?.videos?.[0]?.url ||
-          data?.videos?.[0]?.url ||
-          data?.result?.video_url ||
-          data?.output?.video_url;
+          data?.videos?.[0]?.url;
 
         if (videoUrl) {
           console.log(`[Kling] Task ${taskId} completed! Video URL: ${videoUrl.slice(0, 80)}...`);
@@ -247,8 +248,8 @@ export async function pollKlingTask(
         throw new Error('Task succeeded but no video URL found in response: ' + JSON.stringify(data));
       }
 
-      if (status === 'failed' || status === 'error') {
-        const errMsg = data?.task_status_msg || data?.error || data?.message || 'Unknown error';
+      if (['FAILED', 'ERROR', 'FAIL'].includes(rawStatus)) {
+        const errMsg = data?.fail_reason || data?.task_status_msg || data?.error || data?.message || 'Unknown error';
         throw new Error(`Kling task failed: ${errMsg}`);
       }
 
@@ -327,7 +328,7 @@ export async function generateProductBRollClips(
 
   // Step 3: Poll all tasks concurrently
   const videoUrls = await Promise.all(
-    taskIds.map((taskId, idx) => pollKlingTask(taskId, 6 * 60 * 1000))
+    taskIds.map((taskId, idx) => pollKlingTask(taskId, 10 * 60 * 1000))
   );
 
   console.log('[Kling Pipeline] All clips generated! Downloading...');
