@@ -1006,11 +1006,33 @@ export default function Dashboard() {
                     <span className="text-sm font-black">RetailStacker UGC Pro</span>
                     <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded font-black">PREMIUM</span>
                   </div>
-                  <p className="text-xs text-white/80">Our AI animates your product cinematically, adds a speaking avatar, and composes a professional UGC ad — automatically.</p>
+                  <p className="text-xs text-white/80">Our AI animates your product cinematically, adds a speaking avatar holding your product, and composes a professional UGC ad — automatically.</p>
                   <div className="flex gap-3 mt-3">
-                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> Cinematic product animation</div>
-                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> AI scene generation</div>
-                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> Auto-composed output</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> In-hand product placement</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> 3D B-roll intercut</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> Auto-composed video</div>
+                  </div>
+                </div>
+
+                {/* UGC Templates Grid (Scalio-style) */}
+                <div className="mb-4">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">
+                    Select UGC Ad Style
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-3 bg-purple-50 border-2 border-purple-500 rounded-xl cursor-pointer">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-purple-900">Hold-and-Talk</span>
+                        <span className="bg-purple-600 text-white text-[9px] px-1.5 py-0.5 rounded font-bold">DEFAULT</span>
+                      </div>
+                      <p className="text-[10px] text-purple-700">Creator holds product + 3D B-roll intercuts</p>
+                    </div>
+                    <div className="p-3 bg-gray-50 border border-gray-200 hover:border-purple-300 rounded-xl cursor-pointer opacity-80">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-gray-700">Unboxing & Review</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500">First impression + macro product close-up</p>
+                    </div>
                   </div>
                 </div>
 

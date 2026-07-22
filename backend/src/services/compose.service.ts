@@ -9,11 +9,11 @@ const execFileAsync = promisify(execFile);
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ComposeOptions {
-  bRollClips: string[];       // Local paths to B-roll video clips
+  bRollClips: string[];       // Local paths to Kling B-roll video clips
   avatarVideoUrl: string;     // HeyGen avatar video URL (mp4)
-  outputPath: string;         // Where to save the final composed video
+  outputPath: string;         // Where to save final composed video
   orientation: 'portrait' | 'landscape' | 'square';
-  productImagePath?: string;  // Optional: product image for end card
+  productImagePath?: string;  // Local path to transparent PNG of product
 }
 
 // ─── Download Helper ──────────────────────────────────────────────────────────
@@ -48,163 +48,6 @@ export async function checkFFmpegAvailable(): Promise<boolean> {
   }
 }
 
-// ─── Compose: B-Roll + Avatar PiP ─────────────────────────────────────────────
-
-/**
- * Composes the final UGC ad video:
- * - Concatenates 3 Kling B-roll clips
- * - Downloads & overlays HeyGen avatar as a PiP in the corner
- * - Produces a polished, social-media ready MP4
- */
-export async function composeUgcAd(options: ComposeOptions): Promise<string> {
-  const { bRollClips, avatarVideoUrl, outputPath, orientation } = options;
-
-  const tmpDir = path.dirname(outputPath);
-  if (!fs.existsSync(tmpDir)) {
-    fs.mkdirSync(tmpDir, { recursive: true });
-  }
-
-  const ffmpegAvailable = await checkFFmpegAvailable();
-
-  // ── Strategy 1: Full FFmpeg composition (if ffmpeg is available) ──────────
-  if (ffmpegAvailable && bRollClips.length > 0) {
-    console.log('[Compose] FFmpeg available. Starting full composition...');
-
-    // Download avatar video
-    const avatarLocalPath = path.join(tmpDir, 'avatar.mp4');
-    console.log('[Compose] Downloading avatar video from HeyGen...');
-    await downloadFile(avatarVideoUrl, avatarLocalPath);
-
-    // Verify all B-roll clips exist
-    for (const clip of bRollClips) {
-      if (!fs.existsSync(clip)) {
-        throw new Error(`B-roll clip not found: ${clip}`);
-      }
-    }
-
-    // Calculate dimensions based on orientation
-    const isPortrait = orientation === 'portrait';
-    const mainW = isPortrait ? 1080 : 1920;
-    const mainH = isPortrait ? 1920 : 1080;
-
-    // Avatar PiP: 35% width, positioned in bottom-right corner
-    const pipW = Math.round(mainW * 0.35);
-    const pipH = Math.round(pipW * (isPortrait ? 1.5 : 0.75));
-    const pipX = mainW - pipW - 20; // 20px from right edge
-    const pipY = mainH - pipH - 20; // 20px from bottom edge
-
-    console.log(`[Compose] Canvas: ${mainW}x${mainH} | PiP: ${pipW}x${pipH} at (${pipX},${pipY})`);
-
-    // Step 1: Concatenate all B-roll clips
-    const concatListPath = path.join(tmpDir, 'concat_list.txt');
-    const concatContent = bRollClips.map(p => `file '${p}'`).join('\n');
-    fs.writeFileSync(concatListPath, concatContent);
-
-    const concatenatedPath = path.join(tmpDir, 'broll_concat.mp4');
-    console.log('[Compose] Concatenating B-roll clips...');
-
-    await execFileAsync('ffmpeg', [
-      '-y',
-      '-f', 'concat',
-      '-safe', '0',
-      '-i', concatListPath,
-      '-c:v', 'libx264',
-      '-crf', '20',
-      '-preset', 'fast',
-      '-an', // Remove audio from B-roll
-      concatenatedPath
-    ]);
-
-    console.log('[Compose] B-roll concatenated. Now compositing with avatar...');
-
-    // Step 2: Scale concatenated B-roll to main canvas size
-    const scaledBRollPath = path.join(tmpDir, 'broll_scaled.mp4');
-    await execFileAsync('ffmpeg', [
-      '-y',
-      '-i', concatenatedPath,
-      '-vf', `scale=${mainW}:${mainH}:force_original_aspect_ratio=increase,crop=${mainW}:${mainH}`,
-      '-c:v', 'libx264',
-      '-crf', '20',
-      '-preset', 'fast',
-      '-an',
-      scaledBRollPath
-    ]);
-
-    // Step 3: Composite: B-roll background + Avatar PiP + cinematic grade
-    console.log('[Compose] Final compositing...');
-
-    const filterComplex = [
-      // Scale avatar to PiP size
-      `[1:v]scale=${pipW}:${pipH}:force_original_aspect_ratio=increase,crop=${pipW}:${pipH}[avatar_scaled]`,
-      // Add rounded corners + drop shadow to avatar PiP
-      `[avatar_scaled]format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(gt(hypot(X-${Math.round(pipW/2)},Y-${Math.round(pipH/2)}),${Math.round(Math.min(pipW,pipH)/2)-2}),0,255)'[avatar_circle]`,
-      // Overlay avatar on B-roll background
-      `[0:v][avatar_circle]overlay=${pipX}:${pipY}:format=auto[vout]`
-    ].join(';');
-
-    await execFileAsync('ffmpeg', [
-      '-y',
-      '-i', scaledBRollPath,    // Input 0: B-roll
-      '-i', avatarLocalPath,    // Input 1: Avatar
-      '-filter_complex', filterComplex,
-      '-map', '[vout]',
-      '-map', '1:a',            // Use avatar audio
-      '-c:v', 'libx264',
-      '-crf', '18',
-      '-preset', 'medium',
-      '-c:a', 'aac',
-      '-b:a', '192k',
-      '-movflags', '+faststart', // Optimise for web streaming
-      '-shortest',               // End when shortest stream ends
-      outputPath
-    ]);
-
-    console.log('[Compose] Full composition complete:', outputPath);
-
-    // Clean up temp files
-    try {
-      fs.unlinkSync(concatListPath);
-      fs.unlinkSync(concatenatedPath);
-      fs.unlinkSync(scaledBRollPath);
-      fs.unlinkSync(avatarLocalPath);
-    } catch { /* Ignore cleanup errors */ }
-
-    return outputPath;
-  }
-
-  // ── Strategy 2: Simple concat fallback (no avatar PiP, just B-roll with audio) ──
-  if (ffmpegAvailable && bRollClips.length > 0) {
-    console.log('[Compose] Fallback: Concatenate B-roll only with avatar audio...');
-
-    const avatarLocalPath = path.join(tmpDir, 'avatar_audio.mp4');
-    await downloadFile(avatarVideoUrl, avatarLocalPath);
-
-    const concatListPath = path.join(tmpDir, 'concat_list2.txt');
-    fs.writeFileSync(concatListPath, bRollClips.map(p => `file '${p}'`).join('\n'));
-
-    await execFileAsync('ffmpeg', [
-      '-y',
-      '-f', 'concat',
-      '-safe', '0',
-      '-i', concatListPath,
-      '-i', avatarLocalPath,
-      '-map', '0:v',
-      '-map', '1:a',
-      '-c:v', 'libx264',
-      '-c:a', 'aac',
-      '-shortest',
-      outputPath
-    ]);
-
-    return outputPath;
-  }
-
-  // ── Strategy 3: Avatar-only fallback (no B-roll, just the avatar video) ──
-  console.log('[Compose] No B-roll or FFmpeg available. Using avatar video directly...');
-  await downloadFile(avatarVideoUrl, outputPath);
-  return outputPath;
-}
-
 // ─── Get duration of a video file using FFprobe ───────────────────────────────
 
 export async function getVideoDuration(filePath: string): Promise<number> {
@@ -219,6 +62,220 @@ export async function getVideoDuration(filePath: string): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+// ─── Scalio-Style UGC Ad Compositor ───────────────────────────────────────────
+
+/**
+ * Scalio-Style UGC Ad Compositor:
+ * Creates professional UGC ad switching between:
+ * - Avatar holding product in hand/on table (with speech)
+ * - Kling 3D Animated Product B-Roll cuts (with background speech continuing)
+ * - Seamless intercut transitions
+ */
+export async function composeUgcAd(options: ComposeOptions): Promise<string> {
+  const { bRollClips, avatarVideoUrl, outputPath, orientation, productImagePath } = options;
+
+  const tmpDir = path.dirname(outputPath);
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  }
+
+  const ffmpegAvailable = await checkFFmpegAvailable();
+  if (!ffmpegAvailable) {
+    console.log('[Compose] FFmpeg not available. Falling back to avatar URL...');
+    await downloadFile(avatarVideoUrl, outputPath);
+    return outputPath;
+  }
+
+  // 1. Download Avatar Video
+  const avatarLocalPath = path.join(tmpDir, 'avatar_raw.mp4');
+  console.log('[Compose] Downloading avatar video...');
+  await downloadFile(avatarVideoUrl, avatarLocalPath);
+
+  const isPortrait = orientation === 'portrait';
+  const mainW = isPortrait ? 1080 : 1920;
+  const mainH = isPortrait ? 1920 : 1080;
+
+  // 2. Prepare Avatar with Product Placement in Hand / On Desk
+  let avatarWithProductPath = path.join(tmpDir, 'avatar_with_product.mp4');
+
+  if (productImagePath && fs.existsSync(productImagePath)) {
+    console.log('[Compose] Compositing product cutout into avatar scene...');
+
+    // Scale product to ~28% canvas width, place at bottom-right near avatar hands/desk
+    const prodW = Math.round(mainW * 0.28);
+    const prodX = Math.round(mainW * 0.65);
+    const prodY = Math.round(mainH * 0.62);
+
+    const filterOverlay = [
+      `[0:v]scale=${mainW}:${mainH}:force_original_aspect_ratio=increase,crop=${mainW}:${mainH}[bg]`,
+      `[1:v]scale=${prodW}:-1[prod]`,
+      `[bg][prod]overlay=${prodX}:${prodY}:format=auto[vout]`
+    ].join(';');
+
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', avatarLocalPath,
+      '-i', productImagePath,
+      '-filter_complex', filterOverlay,
+      '-map', '[vout]',
+      '-map', '0:a?',
+      '-c:v', 'libx264',
+      '-crf', '18',
+      '-preset', 'fast',
+      '-c:a', 'copy',
+      avatarWithProductPath
+    ]);
+  } else {
+    // If no product cutout, scale avatar directly
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', avatarLocalPath,
+      '-vf', `scale=${mainW}:${mainH}:force_original_aspect_ratio=increase,crop=${mainW}:${mainH}`,
+      '-c:v', 'libx264',
+      '-crf', '18',
+      '-preset', 'fast',
+      '-c:a', 'copy',
+      avatarWithProductPath
+    ]);
+  }
+
+  // If no Kling B-roll available, output avatar with product placement directly
+  const validBRollClips = bRollClips.filter(c => fs.existsSync(c));
+  if (validBRollClips.length === 0) {
+    console.log('[Compose] No valid B-roll clips. Outputting avatar scene directly...');
+    fs.copyFileSync(avatarWithProductPath, outputPath);
+    return outputPath;
+  }
+
+  console.log(`[Compose] Intercutting avatar video with ${validBRollClips.length} Kling B-roll clips...`);
+
+  // 3. Scalio Intercut Logic:
+  // Split narration into intercut segments:
+  //   Shot 1: Avatar introduction (0s to 4s)
+  //   Shot 2: Kling B-roll 1 (4s to 9s)
+  //   Shot 3: Avatar presentation (9s to 14s)
+  //   Shot 4: Kling B-roll 2 (14s to 19s)
+  //   Shot 5: Avatar CTA (19s to end)
+
+  const totalDuration = await getVideoDuration(avatarWithProductPath) || 25;
+  console.log(`[Compose] Total video duration: ${totalDuration}s`);
+
+  // Extract separate audio track to keep voiceover continuous
+  const continuousAudioPath = path.join(tmpDir, 'voiceover.aac');
+  await execFileAsync('ffmpeg', [
+    '-y',
+    '-i', avatarWithProductPath,
+    '-vn',
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    continuousAudioPath
+  ]);
+
+  // Scale all B-roll clips to main canvas size
+  const scaledBRollPaths: string[] = [];
+  for (let i = 0; i < validBRollClips.length; i++) {
+    const scaledPath = path.join(tmpDir, `broll_scaled_${i}.mp4`);
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', validBRollClips[i],
+      '-vf', `scale=${mainW}:${mainH}:force_original_aspect_ratio=increase,crop=${mainW}:${mainH}`,
+      '-c:v', 'libx264',
+      '-crf', '18',
+      '-preset', 'fast',
+      '-an',
+      scaledPath
+    ]);
+    scaledBRollPaths.push(scaledPath);
+  }
+
+  // Create intercut segments list
+  const segmentFiles: string[] = [];
+
+  // Segment 1: Avatar intro (0 - 4s)
+  const seg1 = path.join(tmpDir, 'seg_1.mp4');
+  await execFileAsync('ffmpeg', [
+    '-y', '-ss', '0', '-to', '4', '-i', avatarWithProductPath,
+    '-c:v', 'libx264', '-an', seg1
+  ]);
+  segmentFiles.push(seg1);
+
+  // Segment 2: Kling B-Roll 1 (4 - 9s)
+  if (scaledBRollPaths[0]) {
+    const seg2 = path.join(tmpDir, 'seg_2.mp4');
+    await execFileAsync('ffmpeg', [
+      '-y', '-ss', '0', '-to', '5', '-i', scaledBRollPaths[0],
+      '-c:v', 'libx264', '-an', seg2
+    ]);
+    segmentFiles.push(seg2);
+  }
+
+  // Segment 3: Avatar mid-talk (9 - 14s)
+  if (totalDuration > 9) {
+    const seg3 = path.join(tmpDir, 'seg_3.mp4');
+    const seg3End = Math.min(14, totalDuration);
+    await execFileAsync('ffmpeg', [
+      '-y', '-ss', '9', '-to', String(seg3End), '-i', avatarWithProductPath,
+      '-c:v', 'libx264', '-an', seg3
+    ]);
+    segmentFiles.push(seg3);
+  }
+
+  // Segment 4: Kling B-Roll 2 (14 - 19s)
+  const bRoll2 = scaledBRollPaths[1] || scaledBRollPaths[0];
+  if (totalDuration > 14 && bRoll2) {
+    const seg4 = path.join(tmpDir, 'seg_4.mp4');
+    await execFileAsync('ffmpeg', [
+      '-y', '-ss', '0', '-to', '5', '-i', bRoll2,
+      '-c:v', 'libx264', '-an', seg4
+    ]);
+    segmentFiles.push(seg4);
+  }
+
+  // Segment 5: Avatar CTA (19s to end)
+  if (totalDuration > 19) {
+    const seg5 = path.join(tmpDir, 'seg_5.mp4');
+    await execFileAsync('ffmpeg', [
+      '-y', '-ss', '19', '-to', String(totalDuration), '-i', avatarWithProductPath,
+      '-c:v', 'libx264', '-an', seg5
+    ]);
+    segmentFiles.push(seg5);
+  }
+
+  // Concatenate all visual segments
+  const concatTxt = path.join(tmpDir, 'intercut_concat.txt');
+  fs.writeFileSync(concatTxt, segmentFiles.map(f => `file '${f}'`).join('\n'));
+
+  const intercutVisualsPath = path.join(tmpDir, 'intercut_visuals.mp4');
+  await execFileAsync('ffmpeg', [
+    '-y',
+    '-f', 'concat',
+    '-safe', '0',
+    '-i', concatTxt,
+    '-c:v', 'libx264',
+    '-crf', '18',
+    '-preset', 'medium',
+    intercutVisualsPath
+  ]);
+
+  // Combine intercut visuals + continuous voiceover audio
+  console.log('[Compose] Merging intercut visuals with continuous voiceover...');
+
+  await execFileAsync('ffmpeg', [
+    '-y',
+    '-i', intercutVisualsPath,
+    '-i', continuousAudioPath,
+    '-c:v', 'copy',
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    '-shortest',
+    '-movflags', '+faststart',
+    outputPath
+  ]);
+
+  console.log('[Compose] Scalio-style UGC ad composition complete:', outputPath);
+  return outputPath;
 }
 
 // ─── Add text overlay / captions ─────────────────────────────────────────────

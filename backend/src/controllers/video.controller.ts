@@ -2128,8 +2128,19 @@ async function runKlingUgcPipeline(params: {
       throw new Error('HeyGen avatar generation failed: ' + heygenErr.message);
     }
 
+    // ── Create transparent product PNG for hand overlay ──────────────────
+    let transparentProductPath = productImagePath;
+    try {
+      const transparentBase64 = await removeWhiteBackground(productImageBase64);
+      transparentProductPath = path.join(tmpDir, 'product_cutout.png');
+      fs.writeFileSync(transparentProductPath, Buffer.from(transparentBase64, 'base64'));
+      console.log('[Kling Pipeline] Transparent product cutout created for in-hand placement');
+    } catch (bgErr: any) {
+      console.warn('[Kling Pipeline] Background removal fallback:', bgErr.message);
+    }
+
     // ── Step C: Compose final video ────────────────────────────────────────
-    console.log('[Kling Pipeline] Step C: Composing final UGC ad...');
+    console.log('[Kling Pipeline] Step C: Composing final Scalio-style UGC ad...');
 
     const finalOutputPath = path.join(tmpDir, 'final_ugc_ad.mp4');
 
@@ -2138,6 +2149,7 @@ async function runKlingUgcPipeline(params: {
       avatarVideoUrl,
       outputPath: finalOutputPath,
       orientation,
+      productImagePath: transparentProductPath,
     });
 
     // ── Step D: Add hook text overlay if provided ──────────────────────────
