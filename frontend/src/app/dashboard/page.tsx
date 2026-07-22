@@ -145,8 +145,8 @@ export default function Dashboard() {
   const [orientation, setOrientation] = useState('portrait');
   const [seedance, setSeedance] = useState(false);
 
-  // ── Mode: avatar | product ────────────────────────────────────────────────
-  const [mode, setMode] = useState<'avatar' | 'product'>('avatar');
+  // ── Mode: avatar | product | kling ──────────────────────────────────────────
+  const [mode, setMode] = useState<'avatar' | 'product' | 'kling'>('avatar');
   
   // ── Product Ad Upload & Analysis States ──────────────────────────────────
   const [productImageFile, setProductImageFile] = useState<File | null>(null);
@@ -491,7 +491,63 @@ export default function Dashboard() {
     }
   };
 
+  // ── Generate Kling UGC Pro Ad ─────────────────────────────────────────────
+  const klingModalStages = [
+    { title: "Analyzing product with Gemini AI...", description: "Understanding your product's unique features and visual identity" },
+    { title: "Crafting 3 cinematic scene prompts...", description: "Designing Scalio-quality B-roll shots: hero reveal, lifestyle, CTA" },
+    { title: "Animating product with Kling v3...", description: "Generating photorealistic cinematic product B-roll clips" },
+    { title: "Generating avatar talking head...", description: "HeyGen avatar speaking your cleaned script" },
+    { title: "Compositing final UGC ad...", description: "Merging B-roll + avatar into a polished UGC video" },
+    { title: "🎬 Your Kling UGC Ad is ready!", description: "Scalio-quality result delivered to your library" },
+  ];
+
+  const handleGenerateKlingUgcAd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!script.trim()) { setError('Please enter an ad script.'); return; }
+    if (!productImageBase64) { setError('Please upload your product image for the Kling UGC ad.'); return; }
+    if (!selectedAvatarId) { setError('Please select an avatar.'); return; }
+    if (!selectedVoiceId) { setError('Please select a voice.'); return; }
+    if (creditsBalance < 40) { setError('Kling UGC Pro ads cost 40 credits. Please top up.'); return; }
+
+    setRendering(true); setError('');
+    setShowProcessingModal(true); setModalStage(0);
+
+    const stageInterval = setInterval(() => {
+      setModalStage(prev => Math.min(prev + 1, klingModalStages.length - 2));
+    }, 12000);
+
+    try {
+      const activeVoice = voices.find((v: any) => v.voice_id === selectedVoiceId);
+      await api.post('/videos/generate-kling-ugc', {
+        script: script.trim(),
+        avatarId: selectedAvatarId,
+        voiceId: selectedVoiceId,
+        language: activeVoice ? activeVoice.language : 'English',
+        orientation,
+        productImageBase64,
+        productImageMime,
+        productDescription: productAnalysis?.productName || productAnalysis?.category || 'Product',
+        productCategory: productAnalysis?.category?.toLowerCase() || 'product',
+        hookText: hookText || undefined,
+      });
+
+      setScript(''); setVisualPrompt(''); setHookText('');
+      setProductImageFile(null); setProductImageBase64(''); setProductImagePreview(''); setProductAnalysis(null);
+      mutate(); await refreshProfile();
+      clearInterval(stageInterval);
+      setModalStage(klingModalStages.length - 1);
+      setTimeout(() => setShowProcessingModal(false), 4000);
+    } catch (err: any) {
+      clearInterval(stageInterval);
+      setShowProcessingModal(false);
+      setError(err.response?.data?.message || 'Kling UGC generation failed.');
+    } finally {
+      setRendering(false);
+    }
+  };
+
   const handleShare = (videoId: string) => {
+
     const shareUrl = `${window.location.origin}/video/${videoId}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopiedId(videoId);
@@ -594,6 +650,18 @@ export default function Dashboard() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${mode === 'product' ? 'bg-white text-brandGreen-dark shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
               >
                 <Image className="w-3.5 h-3.5" /> Product Ad
+              </button>
+              <button
+                onClick={() => setMode('kling')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  mode === 'kling'
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-md shadow-purple-200'
+                    : 'text-gray-400 hover:text-purple-500'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>UGC Pro</span>
+                {mode !== 'kling' && <span className="bg-purple-100 text-purple-600 text-[9px] px-1 py-0.5 rounded font-black">NEW</span>}
               </button>
             </div>
           </div>
@@ -928,6 +996,76 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* ── KLING UGC PRO MODE: Cinematic Product Ad ─────────────── */}
+            {mode === 'kling' && (
+              <div className="px-6 pt-5 pb-4">
+                {/* Header banner */}
+                <div className="bg-gradient-to-r from-purple-600 to-pink-500 rounded-2xl p-4 mb-4 text-white">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles className="w-4 h-4" />
+                    <span className="text-sm font-black">Kling UGC Pro</span>
+                    <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded font-black">SCALIO-QUALITY</span>
+                  </div>
+                  <p className="text-xs text-white/80">Cinematic product B-roll (Kling v3) + Avatar talking head (HeyGen) + Auto-compose = Professional UGC ad</p>
+                  <div className="flex gap-3 mt-3">
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> 3 cinematic clips</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> AI scene prompts</div>
+                    <div className="flex items-center gap-1 text-[10px] text-white/90"><CheckCircle className="w-3 h-3" /> Auto-compose</div>
+                  </div>
+                </div>
+
+                {/* Product image upload (reused) */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Image className="w-3.5 h-3.5 text-purple-500" /> Product Image
+                  </span>
+                  {productImagePreview && (
+                    <button type="button" onClick={() => { setProductImageFile(null); setProductImageBase64(''); setProductImagePreview(''); setProductAnalysis(null); }}
+                      className="text-[10px] text-red-400 hover:text-red-600 font-semibold">Remove</button>
+                  )}
+                </div>
+
+                {!productImagePreview ? (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={e => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) handleProductImageFile(f); }}
+                    className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${isDragging ? 'border-purple-400 bg-purple-50' : 'border-purple-200 hover:border-purple-400 bg-purple-50/30 hover:bg-purple-50'}`}
+                  >
+                    <div className="w-10 h-10 bg-gradient-to-br from-purple-100 to-pink-100 rounded-xl flex items-center justify-center mx-auto mb-2">
+                      <Upload className="w-5 h-5 text-purple-500" />
+                    </div>
+                    <p className="text-xs font-bold text-gray-700">Upload your product photo</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Watch, skincare, shoes, gadgets — Kling will animate it cinematically</p>
+                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleProductImageFile(f); }} />
+                  </div>
+                ) : (
+                  <div className="flex gap-3 p-3 bg-purple-50 rounded-2xl border border-purple-100">
+                    <img src={productImagePreview} alt="Product" className="w-20 h-20 object-cover rounded-xl border border-purple-200 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      {analyzingProduct ? (
+                        <div className="flex items-center gap-2 text-xs text-purple-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing product...</div>
+                      ) : productAnalysis ? (
+                        <>
+                          <p className="text-xs font-bold text-gray-800 truncate">{productAnalysis.productName}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{productAnalysis.category}</p>
+                          <div className="flex items-center gap-1 mt-1.5 text-[10px] text-purple-600 font-semibold">
+                            <CheckCircle className="w-3 h-3" /> Ready for Kling animation
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-gray-500">Image loaded. Ready to generate.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-[10px] text-amber-800"><span className="font-bold">40 credits per video</span> — Kling v3 B-roll (3 clips) + HeyGen avatar + FFmpeg compose. Takes 3–5 minutes.</p>
+                </div>
+              </div>
+            )}
 
             {/* Divider */}
             <div className="border-t border-black/5 mx-6" />
@@ -1095,8 +1233,39 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {/* ── Kling UGC Pro mode — cinematic generation button */}
+              {mode === 'kling' && productImageBase64 && (
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleGenerateKlingUgcAd}
+                    disabled={rendering || !script.trim() || creditsBalance < 40}
+                    className="w-full bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 text-white font-bold py-3.5 rounded-2xl transition duration-200 flex items-center justify-center gap-2 text-sm shadow-lg shadow-purple-500/25"
+                  >
+                    {rendering ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /><span>Generating Kling UGC Ad... (3–5 min)</span></>
+                    ) : (
+                      <><Sparkles className="w-4 h-4" /><span>🎬 Generate UGC Pro Ad (40 credits)</span></>
+                    )}
+                  </button>
+                  <p className="text-[10px] text-center text-gray-400">
+                    ✨ Kling v3 cinematic B-roll + HeyGen avatar + auto-composed — Scalio quality
+                  </p>
+                </div>
+              )}
+
+              {mode === 'kling' && !productImageBase64 && (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full bg-gray-100 text-gray-400 font-bold py-3.5 rounded-2xl text-sm cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-4 h-4" /> Upload product image to continue
+                </button>
+              )}
+
               {/* Standard avatar mode — normal generate button */}
-              {(mode === 'avatar' || !productImageBase64) && (
+              {(mode === 'avatar' || (mode === 'product' && !productImageBase64)) && (
                 <button
                   type="submit"
                   disabled={rendering || !script.trim() || creditsBalance < 10}
