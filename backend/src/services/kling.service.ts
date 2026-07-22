@@ -133,8 +133,8 @@ export async function submitKlingTask(
 
   console.log(`[Kling] Submitting task: ${scenePrompt.prompt.slice(0, 60)}...`);
 
-  // Try kling-v3 first (best quality, Scalio-level), fallback to kling-v2-6
-  const modelsToTry = ['kling-v3', 'kling-v2-6', 'kling-v2-5-turbo'];
+  // Use exact CrazyRouter Kling model identifiers
+  const modelsToTry = ['aigc-video-kling-3.0', 'aigc-video-kling-2.6', 'aigc-video-kling-2.5-turbo'];
 
   for (const modelName of modelsToTry) {
     try {
@@ -160,15 +160,16 @@ export async function submitKlingTask(
       );
 
       const data = response.data;
-      console.log('[Kling] Submit response:', JSON.stringify(data).slice(0, 200));
+      console.log('[Kling] Submit response:', JSON.stringify(data));
 
-      // CrazyRouter returns task id in different fields depending on the model
-      const taskId = data?.data?.task_id || data?.task_id || data?.id || data?.data?.id;
+      // CrazyRouter returns task_id or id in data
+      const taskId = data?.task_id || data?.id || data?.data?.task_id || data?.data?.id;
 
       if (taskId) {
-        console.log(`[Kling] Task submitted with model ${modelName}. Task ID: ${taskId}`);
+        console.log(`[Kling] Task submitted successfully with model ${modelName}. Task ID: ${taskId}`);
         return taskId;
       }
+
 
       // If model unavailable, try next
       if (data?.code === 'get_channel_failed') {
@@ -224,7 +225,7 @@ export async function pollKlingTask(
       );
 
       const data = response.data?.data || response.data;
-      const status = data?.task_status || data?.status;
+      const status = data?.status || data?.task_status;
       const elapsed = Math.round((Date.now() - startTime) / 1000);
 
       console.log(`[Kling] Task ${taskId} | Status: ${status} | Elapsed: ${elapsed}s`);
@@ -232,9 +233,10 @@ export async function pollKlingTask(
       if (status === 'succeed' || status === 'completed' || status === 'success') {
         // Extract video URL from response
         const videoUrl =
+          data?.url ||
+          data?.video_url ||
           data?.task_result?.videos?.[0]?.url ||
           data?.videos?.[0]?.url ||
-          data?.video_url ||
           data?.result?.video_url ||
           data?.output?.video_url;
 
