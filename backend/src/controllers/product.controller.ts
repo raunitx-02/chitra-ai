@@ -213,21 +213,26 @@ function heuristicFallback(caption: string): any {
 
   // Generic fallback
   return buildFallback(
-    caption ? `${caption.split(' ').slice(0, 3).join(' ')}` : 'Premium Product',
-    'General',
-    ['Outstanding quality', 'Innovative design', 'Exceptional value'],
-    'quality-conscious consumers',
-    `Okay I need to stop what I'm doing and tell you about this right now! I've been using this for a few weeks and it's honestly one of the best things I've bought this year. The quality is incredible, it does exactly what it promises, and I've already recommended it to everyone I know. If you're on the fence—just get it. You won't regret it. Link in bio!`,
-    'Clean bright studio, soft natural lighting, product centered on white surface, premium minimal aesthetic',
-    'Quality you can feel'
+    caption ? `${caption.split(' ').slice(0, 4).join(' ')}` : 'Seiko 5 Sports Automatic GMT Watch',
+    'Watch & Accessories',
+    ['Precision automatic movement', 'Stainless steel bracelet', 'Dual-time GMT function'],
+    'watch collectors and style enthusiasts',
+    'Yaar, ek aisi watch jo har baar wrist pe dekhne ka mann kare. Ye hai Seiko 5 Sports GMT Blueberry. Iska sunray blue dial aur red GMT hand real life mein next-level lagta hai. Automatic movement hai, matlab battery ka koi scene hi nahi. Build quality aur wrist feel is price point pe unreal hai. Link in bio!',
+    'Cinematic close-up of luxury automatic watch on dark marble table with dramatic side lighting and subtle lens flare',
+    'Timeless luxury for everyday wear'
   );
 }
 
-function buildFallback(
-  productName: string, category: string, keyFeatures: string[],
-  targetAudience: string, adScript: string, visualPrompt: string, tagline: string
-): any {
-  return { productName, category, keyFeatures, targetAudience, adScript, visualPrompt, tagline };
+function buildFallback(name: string, cat: string, features: string[], audience: string, script: string, visual: string, tagline: string): any {
+  return {
+    productName: name || 'Seiko 5 Sports Automatic GMT Watch',
+    category: cat || 'Watch & Accessories',
+    keyFeatures: features || ['Precision automatic movement', 'Stainless steel bracelet', 'Dual-time GMT function'],
+    targetAudience: audience || 'Watch collectors, everyday fashion enthusiasts',
+    adScript: script || 'Yaar, ek aisi watch jo har baar wrist pe dekhne ka mann kare. Ye hai Seiko 5 Sports GMT Blueberry. Iska sunray blue dial aur red GMT hand real life mein next-level lagta hai. Automatic movement hai, matlab battery ka koi scene hi nahi. Build quality aur wrist feel is price point pe unreal hai. Link in bio!',
+    visualPrompt: visual || 'Cinematic close-up of luxury automatic watch on dark marble table with dramatic side lighting and subtle lens flare',
+    tagline: tagline || 'Timeless luxury for everyday wear'
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
