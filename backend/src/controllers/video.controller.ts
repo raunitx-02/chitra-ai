@@ -466,18 +466,17 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
             };
           }
 
-          const payload: any = {
-            video_inputs: [sceneInput],
+          const v3Payload: any = {
+            type: 'avatar',
+            avatar_id: avatarId,
+            script: processedScript,
+            voice_id: voiceId,
             dimension: { width, height },
           };
 
-          if (durationVal > 0) {
-            payload.duration = durationVal;
-          }
-
           const response = await axios.post(
-            'https://api.heygen.com/v2/video/generate',
-            payload,
+            'https://api.heygen.com/v3/videos',
+            v3Payload,
             {
               headers: {
                 'x-api-key': HEYGEN_API_KEY,
@@ -486,13 +485,13 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
             }
           );
 
-          heygenVideoId = response.data?.data?.video_id;
+          heygenVideoId = response.data?.data?.video_id || response.data?.video_id;
 
           if (!heygenVideoId) {
-            throw new Error('HeyGen did not return a video_id. Response: ' + JSON.stringify(response.data));
+            throw new Error('HeyGen V3 did not return a video_id. Response: ' + JSON.stringify(response.data));
           }
 
-          console.log(`[HeyGen Render] V2 Job submitted successfully. HeyGen Video ID: ${heygenVideoId}`);
+          console.log(`[HeyGen Render] V3 Job submitted successfully. HeyGen Video ID: ${heygenVideoId}`);
         }
 
         // Update video record to PROCESSING
@@ -647,7 +646,7 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
       }
 
       const response = await axios.get(
-        `https://api.heygen.com/v1/video_status.get?video_id=${heygenVideoId}`,
+        `https://api.heygen.com/v3/videos/${heygenVideoId}`,
         {
           headers: {
             'x-api-key': HEYGEN_API_KEY,
@@ -657,11 +656,11 @@ async function pollHeyGenStatus(dbVideoId: string, heygenVideoId: string) {
 
       const data = response.data?.data;
       const status = data?.status;
-      console.log(`[HeyGen Polling] Video: ${dbVideoId}, Attempt: ${attempts}/${maxAttempts}, Status: ${status}`);
+      console.log(`[HeyGen V3 Polling] Video: ${dbVideoId}, Attempt: ${attempts}/${maxAttempts}, Status: ${status}`);
 
       if (status === 'completed') {
         clearInterval(interval);
-        const videoUrl = data?.video_url;
+        const videoUrl = data?.video_url || data?.url;
         const thumbnailUrl = data?.thumbnail_url;
 
         console.log(`[HeyGen Polling] Video completed! URL: ${videoUrl}`);
@@ -2101,38 +2100,27 @@ async function runKlingUgcPipeline(params: {
 
       const { width, height } = getDimensions(orientation, '1080p');
 
-      const heygenPayload = {
-        video_inputs: [{
-          character: {
-            type: 'avatar',
-            avatar_id: avatarId,
-            avatar_style: 'normal',
-          },
-          voice: {
-            type: 'text',
-            input_text: cleanSpokenScript,
-            voice_id: voiceId,
-          },
-          // Studio backdrop for UGC presenter
-          background: {
-            type: 'color',
-            value: '#1e1e2f',
-          }
-        }],
+      const heygenV3Payload = {
+        type: 'avatar',
+        avatar_id: avatarId,
+        script: cleanSpokenScript,
+        voice_id: voiceId,
         dimension: { width, height },
         aspect_ratio: aspectRatio,
       };
 
+      console.log(`[Kling Pipeline] Submitting HeyGen V3 video generation job...`);
+
       const heygenResponse = await axios.post(
-        'https://api.heygen.com/v2/video/generate',
-        heygenPayload,
+        'https://api.heygen.com/v3/videos',
+        heygenV3Payload,
         { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 30000 }
       );
 
-      const heygenVideoId = heygenResponse.data?.data?.video_id;
-      if (!heygenVideoId) throw new Error('HeyGen did not return video_id');
+      const heygenVideoId = heygenResponse.data?.data?.video_id || heygenResponse.data?.video_id;
+      if (!heygenVideoId) throw new Error('HeyGen V3 did not return video_id: ' + JSON.stringify(heygenResponse.data));
 
-      console.log(`[Kling Pipeline] HeyGen job submitted: ${heygenVideoId}. Polling...`);
+      console.log(`[Kling Pipeline] HeyGen V3 job submitted: ${heygenVideoId}. Polling...`);
 
       // Poll HeyGen until complete
       avatarVideoUrl = await pollHeyGenUntilComplete(heygenVideoId, 10 * 60 * 1000);
@@ -2234,23 +2222,23 @@ async function pollHeyGenUntilComplete(
     await new Promise(resolve => setTimeout(resolve, interval));
 
     const response = await axios.get(
-      `https://api.heygen.com/v1/video_status.get?video_id=${heygenVideoId}`,
+      `https://api.heygen.com/v3/videos/${heygenVideoId}`,
       { headers: { 'x-api-key': HEYGEN_API_KEY } }
     );
 
     const data = response.data?.data;
     const status = data?.status;
     const elapsed = Math.round((Date.now() - startTime) / 1000);
-    console.log(`[HeyGen Poll] Video: ${heygenVideoId} | Status: ${status} | Elapsed: ${elapsed}s`);
+    console.log(`[HeyGen V3 Poll] Video: ${heygenVideoId} | Status: ${status} | Elapsed: ${elapsed}s`);
 
     if (status === 'completed') {
-      const videoUrl = data?.video_url;
-      if (!videoUrl) throw new Error('HeyGen completed but no video_url');
+      const videoUrl = data?.video_url || data?.url;
+      if (!videoUrl) throw new Error('HeyGen V3 completed but no video_url');
       return videoUrl;
     }
-    if (status === 'failed') {
-      throw new Error(`HeyGen video ${heygenVideoId} failed: ${data?.error || 'unknown'}`);
+    if (status === 'failed' || status === 'error') {
+      throw new Error(`HeyGen V3 video ${heygenVideoId} failed: ${data?.error || 'unknown'}`);
     }
   }
-  throw new Error(`HeyGen polling timed out after ${maxWaitMs / 1000}s`);
+  throw new Error(`HeyGen V3 polling timed out after ${maxWaitMs / 1000}s`);
 }
