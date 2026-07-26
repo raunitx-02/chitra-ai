@@ -2048,7 +2048,7 @@ export async function generateKlingUgcAd(req: AuthenticatedRequest, res: Respons
 }
 
 // ─── Background pipeline runner ───────────────────────────────────────────────
-async function runKlingUgcPipeline(params: {
+export async function runKlingUgcPipeline(params: {
   videoId: string;
   userId: string;
   script: string;
