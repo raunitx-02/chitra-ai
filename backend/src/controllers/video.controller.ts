@@ -466,29 +466,38 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
             };
           }
 
-          const v3Payload: any = {
-            type: 'avatar',
-            avatar_id: avatarId,
-            script: processedScript,
-            voice_id: voiceId,
-            dimension: { width, height },
-          };
+          const isV3LookId = avatarId.length === 32 && /^[0-9a-fA-F]+$/.test(avatarId);
 
-          const response = await axios.post(
-            'https://api.heygen.com/v3/videos',
-            v3Payload,
-            {
-              headers: {
-                'x-api-key': HEYGEN_API_KEY,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-
-          heygenVideoId = response.data?.data?.video_id || response.data?.video_id;
+          if (isV3LookId) {
+            console.log(`[HeyGen Render] Submitting V3 video job for look_id: ${avatarId}`);
+            const v3Payload: any = {
+              type: 'avatar',
+              avatar_id: avatarId,
+              script: processedScript,
+              voice_id: voiceId,
+            };
+            const response = await axios.post(
+              'https://api.heygen.com/v3/videos',
+              v3Payload,
+              { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 30000 }
+            );
+            heygenVideoId = response.data?.data?.video_id || response.data?.data?.id || response.data?.video_id;
+          } else {
+            console.log(`[HeyGen Render] Submitting V2 video job for legacy avatar_id: ${avatarId}`);
+            const payload: any = {
+              video_inputs: [sceneInput],
+              dimension: { width, height },
+            };
+            const response = await axios.post(
+              'https://api.heygen.com/v2/video/generate',
+              payload,
+              { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 30000 }
+            );
+            heygenVideoId = response.data?.data?.video_id;
+          }
 
           if (!heygenVideoId) {
-            throw new Error('HeyGen V3 did not return a video_id. Response: ' + JSON.stringify(response.data));
+            throw new Error('HeyGen did not return a video_id. Response');
           }
 
           console.log(`[HeyGen Render] V3 Job submitted successfully. HeyGen Video ID: ${heygenVideoId}`);
@@ -2100,27 +2109,54 @@ async function runKlingUgcPipeline(params: {
 
       const { width, height } = getDimensions(orientation, '1080p');
 
-      const heygenV3Payload = {
-        type: 'avatar',
-        avatar_id: avatarId,
-        script: cleanSpokenScript,
-        voice_id: voiceId,
-        dimension: { width, height },
-        aspect_ratio: aspectRatio,
-      };
+      const isV3LookId = avatarId.length === 32 && /^[0-9a-fA-F]+$/.test(avatarId);
+      let heygenVideoId = '';
 
-      console.log(`[Kling Pipeline] Submitting HeyGen V3 video generation job...`);
+      if (isV3LookId) {
+        console.log(`[Kling Pipeline] Submitting HeyGen V3 video job for look_id: ${avatarId}`);
+        const v3Payload = {
+          type: 'avatar',
+          avatar_id: avatarId,
+          script: cleanSpokenScript,
+          voice_id: voiceId,
+        };
+        const heygenResponse = await axios.post(
+          'https://api.heygen.com/v3/videos',
+          v3Payload,
+          { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 30000 }
+        );
+        heygenVideoId = heygenResponse.data?.data?.video_id || heygenResponse.data?.data?.id || heygenResponse.data?.video_id;
+      } else {
+        console.log(`[Kling Pipeline] Submitting HeyGen V2 video job for legacy avatar_id: ${avatarId}`);
+        const v2Payload = {
+          video_inputs: [{
+            character: {
+              type: 'avatar',
+              avatar_id: avatarId,
+              avatar_style: 'normal',
+            },
+            voice: {
+              type: 'text',
+              input_text: cleanSpokenScript,
+              voice_id: voiceId,
+            },
+            background: {
+              type: 'color',
+              value: '#1e1e2f',
+            }
+          }],
+          dimension: { width, height },
+        };
+        const heygenResponse = await axios.post(
+          'https://api.heygen.com/v2/video/generate',
+          v2Payload,
+          { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 30000 }
+        );
+        heygenVideoId = heygenResponse.data?.data?.video_id;
+      }
 
-      const heygenResponse = await axios.post(
-        'https://api.heygen.com/v3/videos',
-        heygenV3Payload,
-        { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 30000 }
-      );
-
-      const heygenVideoId = heygenResponse.data?.data?.video_id || heygenResponse.data?.video_id;
-      if (!heygenVideoId) throw new Error('HeyGen V3 did not return video_id: ' + JSON.stringify(heygenResponse.data));
-
-      console.log(`[Kling Pipeline] HeyGen V3 job submitted: ${heygenVideoId}. Polling...`);
+      if (!heygenVideoId) throw new Error('HeyGen did not return video_id');
+      console.log(`[Kling Pipeline] HeyGen job submitted: ${heygenVideoId}. Polling...`);
 
       // Poll HeyGen until complete
       avatarVideoUrl = await pollHeyGenUntilComplete(heygenVideoId, 10 * 60 * 1000);
