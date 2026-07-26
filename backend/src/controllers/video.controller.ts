@@ -1391,10 +1391,10 @@ export async function getVideos(req: AuthenticatedRequest, res: Response) {
             } catch (err: any) {
               console.error(`[On-The-Fly Sync Session Error] Video: ${video.id}`, err.message);
             }
-          } else if (!video.videoUrl.startsWith('http') && HEYGEN_API_KEY) {
+          } else if (!video.videoUrl.startsWith('http') && !video.videoUrl.startsWith('kling:') && HEYGEN_API_KEY) {
             try {
               const response = await axios.get(
-                `https://api.heygen.com/v1/video_status.get?video_id=${video.videoUrl}`,
+                `https://api.heygen.com/v3/videos/${video.videoUrl}`,
                 {
                   headers: {
                     'x-api-key': HEYGEN_API_KEY,
@@ -1935,7 +1935,7 @@ export async function resumeActivePolling() {
           const renderId = video.videoUrl.replace('creatomate:', '');
           console.log(`[HeyGen Resume] Resuming status polling loop for Creatomate Video ID: ${video.id}, Render ID: ${renderId}`);
           pollCreatomateStatus(video.id, renderId);
-        } else if (!video.videoUrl.startsWith('http')) {
+        } else if (!video.videoUrl.startsWith('http') && !video.videoUrl.startsWith('kling:')) {
           console.log(`[HeyGen Resume] Resuming status polling loop for HeyGen Video ID: ${video.id}, HeyGen ID: ${video.videoUrl}`);
           pollHeyGenStatus(video.id, video.videoUrl);
         }
