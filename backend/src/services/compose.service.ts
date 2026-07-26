@@ -122,6 +122,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
       '-map', '[vout]',
       '-map', '0:a?',
       '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
       '-crf', '18',
       '-preset', 'fast',
       '-c:a', 'copy',
@@ -134,6 +135,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
       '-i', avatarLocalPath,
       '-vf', `scale=${mainW}:${mainH}:force_original_aspect_ratio=increase,crop=${mainW}:${mainH}`,
       '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
       '-crf', '18',
       '-preset', 'fast',
       '-c:a', 'copy',
@@ -182,6 +184,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
       '-i', validBRollClips[i],
       '-vf', `scale=${mainW}:${mainH}:force_original_aspect_ratio=increase,crop=${mainW}:${mainH}`,
       '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
       '-crf', '18',
       '-preset', 'fast',
       '-an',
@@ -197,7 +200,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
   const seg1 = path.join(tmpDir, 'seg_1.mp4');
   await execFileAsync('ffmpeg', [
     '-y', '-ss', '0', '-to', '4', '-i', avatarWithProductPath,
-    '-c:v', 'libx264', '-an', seg1
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', seg1
   ]);
   segmentFiles.push(seg1);
 
@@ -206,7 +209,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
     const seg2 = path.join(tmpDir, 'seg_2.mp4');
     await execFileAsync('ffmpeg', [
       '-y', '-ss', '0', '-to', '5', '-i', scaledBRollPaths[0],
-      '-c:v', 'libx264', '-an', seg2
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', seg2
     ]);
     segmentFiles.push(seg2);
   }
@@ -217,7 +220,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
     const seg3End = Math.min(14, totalDuration);
     await execFileAsync('ffmpeg', [
       '-y', '-ss', '9', '-to', String(seg3End), '-i', avatarWithProductPath,
-      '-c:v', 'libx264', '-an', seg3
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', seg3
     ]);
     segmentFiles.push(seg3);
   }
@@ -228,7 +231,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
     const seg4 = path.join(tmpDir, 'seg_4.mp4');
     await execFileAsync('ffmpeg', [
       '-y', '-ss', '0', '-to', '5', '-i', bRoll2,
-      '-c:v', 'libx264', '-an', seg4
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', seg4
     ]);
     segmentFiles.push(seg4);
   }
@@ -238,7 +241,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
     const seg5 = path.join(tmpDir, 'seg_5.mp4');
     await execFileAsync('ffmpeg', [
       '-y', '-ss', '19', '-to', String(totalDuration), '-i', avatarWithProductPath,
-      '-c:v', 'libx264', '-an', seg5
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', seg5
     ]);
     segmentFiles.push(seg5);
   }
@@ -254,6 +257,7 @@ export async function composeUgcAd(options: ComposeOptions): Promise<string> {
     '-safe', '0',
     '-i', concatTxt,
     '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
     '-crf', '18',
     '-preset', 'medium',
     intercutVisualsPath
