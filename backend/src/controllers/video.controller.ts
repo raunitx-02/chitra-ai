@@ -276,10 +276,12 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
       visualPrompt,
       duration,           // '15' | '30' | '60' | 'auto'
       orientation,        // 'portrait' | 'landscape' | 'square'
+      aspectRatio,
       style,              // style id string
       mode,               // 'avatar' | 'product'
       productImageBase64, // base64 encoded product image
       productImageMime,   // mime type e.g. 'image/jpeg'
+      productDescription,
       hookText,
       bRollUrl,
     } = req.body;
@@ -409,67 +411,46 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
 
         let heygenVideoId = '';
 
-        if (mode !== 'product') {
-          // OPTION A: Integrate HeyGen Video Agent V3 API for full multi-scene dynamic generation
-          const agentPayload = {
-            prompt: agentPrompt,
-            avatar_id: avatarId,
-            voice_id: voiceId,
-            orientation: orientationVal === 'landscape' ? 'landscape' : 'portrait',
+        if (mode === 'product' || mode === 'cinematic') {
+          // ── OPTION 2: HeyGen Cinematic Mode (15-sec Cinematic UGC Product Ad) ──
+          console.log(`[HeyGen Cinematic Mode] Submitting 15-sec Cinematic UGC Ad...`);
+
+          const isV3LookId = avatarId.length === 32 && /^[0-9a-fA-F]+$/.test(avatarId);
+          const avatarRef = isV3LookId ? avatarId : 'fbee11f583244c1095136b049cd1bbd2';
+
+          // Build rich 15-second cinematic prompt
+          const shotPrompt = visualPrompt && visualPrompt.trim().length > 0
+            ? visualPrompt.trim()
+            : `A 15-second high-energy cinematic UGC product ad for ${productDescription || 'product'}. Professional presenter holding the product, 360-degree dynamic camera movement, soft studio key lighting, photorealistic 4k quality. Speaking script: ${processedScript.substring(0, 150)}`;
+
+          const cinematicPayload = {
+            type: 'cinematic_avatar',
+            avatar_id: [avatarRef],
+            prompt: shotPrompt,
+            aspect_ratio: aspectRatio || (orientationVal === 'landscape' ? '16:9' : '9:16'),
           };
 
-          console.log(`[HeyGen Video Agent] Creating session with payload:`, JSON.stringify(agentPayload));
+          console.log(`[HeyGen Cinematic Mode] Payload:`, JSON.stringify(cinematicPayload));
 
           const response = await axios.post(
-            'https://api.heygen.com/v3/video-agents',
-            agentPayload,
-            {
-              headers: {
-                'x-api-key': HEYGEN_API_KEY,
-                'Content-Type': 'application/json',
-              },
-            }
+            'https://api.heygen.com/v3/videos',
+            cinematicPayload,
+            { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 45000 }
           );
 
-          heygenVideoId = 'session_' + response.data?.data?.session_id;
-
-          if (!heygenVideoId || heygenVideoId === 'session_undefined') {
-            throw new Error('HeyGen did not return a session_id. Response: ' + JSON.stringify(response.data));
+          heygenVideoId = response.data?.data?.video_id || response.data?.data?.id || response.data?.video_id;
+          if (!heygenVideoId) {
+            throw new Error('HeyGen Cinematic Mode did not return video_id: ' + JSON.stringify(response.data));
           }
+          console.log(`[HeyGen Cinematic Mode] Job submitted successfully: ${heygenVideoId}`);
 
-          console.log(`[HeyGen Video Agent] Session created successfully: ${heygenVideoId}`);
         } else {
-          // Use standard V2 generate endpoint for Product Ad mode (which uses Creatomate overlay afterwards)
-          const sceneInput: any = {
-            character: characterInput,
-            voice: voiceId && voiceId !== 'none' ? {
-              type: 'text',
-              input_text: processedScript,
-              voice_id: voiceId,
-            } : {
-              type: 'silence',
-            },
-          };
-
-          const productBgUrl = (req as any)._productBgUrl;
-          if (productBgUrl) {
-            sceneInput.background = {
-              type: 'image',
-              url: productBgUrl,
-            };
-          } else if (visualPrompt && visualPrompt.trim().length > 0) {
-            const bgPrompt = `${visualPrompt.trim()}, blurred background, photorealistic portrait studio setting, soft bokeh, high resolution`;
-            const generatedBgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(bgPrompt)}?width=${width}&height=${height}&nologo=true`;
-            sceneInput.background = {
-              type: 'image',
-              url: generatedBgUrl,
-            };
-          }
+          // ── OPTION 1: HeyGen Avatar V Mode (High Quality Talking Avatar) ───────
+          console.log(`[HeyGen Avatar V Mode] Submitting video job for avatar: ${avatarId}`);
 
           const isV3LookId = avatarId.length === 32 && /^[0-9a-fA-F]+$/.test(avatarId);
 
           if (isV3LookId) {
-            console.log(`[HeyGen Render] Submitting V3 video job for look_id: ${avatarId}`);
             const v3Payload: any = {
               type: 'avatar',
               avatar_id: avatarId,
@@ -483,7 +464,14 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
             );
             heygenVideoId = response.data?.data?.video_id || response.data?.data?.id || response.data?.video_id;
           } else {
-            console.log(`[HeyGen Render] Submitting V2 video job for legacy avatar_id: ${avatarId}`);
+            const sceneInput: any = {
+              character: characterInput,
+              voice: voiceId && voiceId !== 'none' ? {
+                type: 'text',
+                input_text: processedScript,
+                voice_id: voiceId,
+              } : { type: 'silence' },
+            };
             const payload: any = {
               video_inputs: [sceneInput],
               dimension: { width, height },
@@ -497,10 +485,10 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
           }
 
           if (!heygenVideoId) {
-            throw new Error('HeyGen did not return a video_id. Response');
+            throw new Error('HeyGen Avatar V did not return a video_id');
           }
 
-          console.log(`[HeyGen Render] V3 Job submitted successfully. HeyGen Video ID: ${heygenVideoId}`);
+          console.log(`[HeyGen Avatar V] Job submitted successfully: ${heygenVideoId}`);
         }
 
         // Update video record to PROCESSING
