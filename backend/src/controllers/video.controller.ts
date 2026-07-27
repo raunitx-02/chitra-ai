@@ -432,17 +432,25 @@ export async function generateVideo(req: AuthenticatedRequest, res: Response) {
 
           console.log(`[HeyGen Cinematic Mode] Payload:`, JSON.stringify(cinematicPayload));
 
-          const response = await axios.post(
-            'https://api.heygen.com/v3/videos',
-            cinematicPayload,
-            { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 45000 }
-          );
+          try {
+            const response = await axios.post(
+              'https://api.heygen.com/v3/videos',
+              cinematicPayload,
+              { headers: { 'x-api-key': HEYGEN_API_KEY, 'Content-Type': 'application/json' }, timeout: 45000 }
+            );
 
-          heygenVideoId = response.data?.data?.video_id || response.data?.data?.id || response.data?.video_id;
-          if (!heygenVideoId) {
-            throw new Error('HeyGen Cinematic Mode did not return video_id: ' + JSON.stringify(response.data));
+            heygenVideoId = response.data?.data?.video_id || response.data?.data?.id || response.data?.video_id;
+            if (!heygenVideoId) {
+              throw new Error('HeyGen Cinematic Mode did not return video_id: ' + JSON.stringify(response.data));
+            }
+            console.log(`[HeyGen Cinematic Mode] Job submitted successfully: ${heygenVideoId}`);
+          } catch (err: any) {
+            const errData = err.response?.data;
+            if (err.response?.status === 402 || errData?.error?.code === 'insufficient_credit') {
+              throw new Error('HeyGen Cinematic Mode requires 60 HeyGen credits per video. Your HeyGen account balance is currently insufficient for Cinematic mode. Please top up credits at app.heygen.com.');
+            }
+            throw err;
           }
-          console.log(`[HeyGen Cinematic Mode] Job submitted successfully: ${heygenVideoId}`);
 
         } else {
           // ── OPTION 1: HeyGen Avatar V Mode (High Quality Talking Avatar) ───────
